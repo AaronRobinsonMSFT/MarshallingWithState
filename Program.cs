@@ -2,8 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 
@@ -19,9 +17,13 @@ public class Program
         {
             // Sanity check
             using var _ = Platform.InitializeAllocators(tracking: false);
-            Console.WriteLine(ToUpper(s_helloworld));
-            Console.WriteLine(Concat(s_array));
-            Console.WriteLine(Concat2(s_3x3));
+            Console.WriteLine(ToUpper1(s_helloworld));
+            Console.WriteLine(Concat1(s_array));
+            Console.WriteLine(ConcatMatrix1(s_3x3));
+
+            Console.WriteLine(ToUpper2(s_helloworld));
+            Console.WriteLine(Concat2(s_array));
+            Console.WriteLine(ConcatMatrix2(s_3x3));
         }
         else
         {
@@ -42,21 +44,30 @@ public class Program
     public void GlobalCleanup() => _memTracker.Dispose();
 
     [Benchmark]
-    public string HString() => ToUpper(s_helloworld);
+    public string HString1() => ToUpper1(s_helloworld);
 
     [Benchmark]
-    public string HStringArray() => Concat(s_array);
+    public string HStringArray1() => Concat1(s_array);
 
     [Benchmark]
-    public string HStringMatrix() => Concat2(s_3x3);
+    public string HStringMatrix1() => ConcatMatrix1(s_3x3);
+
+    [Benchmark]
+    public string HString2() => ToUpper2(s_helloworld);
+
+    [Benchmark]
+    public string HStringArray2() => Concat2(s_array);
+
+    [Benchmark]
+    public string HStringMatrix2() => ConcatMatrix2(s_3x3);
 
     //
     // Generated P/Invoke calls
     //
 
-    static unsafe string ToUpper(string str)
+    static unsafe string ToUpper1(string str)
     {
-        HStringMarshaller marshaller = default;
+        HStringMarshaller1 marshaller = default;
         string managed;
 
         try
@@ -84,20 +95,20 @@ public class Program
         static void* __PInvoke(void* s) => Platform.ToUpper(s);
     }
 
-    static unsafe string Concat(string[] strs)
+    static unsafe string Concat1(string[] strs)
     {
         ArrayMarshaller<string> native = default;
-        HStringMarshaller ret = default;
+        HStringMarshaller1 ret = default;
         string managed = default;
 
         try
         {
             // Marshal
-            Span<IntPtr> elements = native.InitializeToNative<IntPtr>(strs, IntPtr.Size, sizeof(HStringMarshaller));
-            Span<HStringMarshaller> states = native.GetStateCollection<HStringMarshaller>();
+            Span<IntPtr> elements = native.InitializeToNative<IntPtr>(strs, IntPtr.Size, sizeof(HStringMarshaller1));
+            Span<HStringMarshaller1> states = native.GetStateCollection<HStringMarshaller1>();
             for (int i = 0; i < strs.Length; ++i)
             {
-                ref HStringMarshaller hstring = ref states[i];
+                ref HStringMarshaller1 hstring = ref states[i];
                 hstring.FromManagedValue(strs[i]);
                 elements[i] = hstring.ToNativeValue();
             }
@@ -113,7 +124,7 @@ public class Program
         finally
         {
             // Clean up
-            Span<HStringMarshaller> states = native.GetStateCollection<HStringMarshaller>();
+            Span<HStringMarshaller1> states = native.GetStateCollection<HStringMarshaller1>();
             for (int i = 0; i < states.Length; ++i)
             {
                 states[i].FreeNative();
@@ -128,11 +139,11 @@ public class Program
         static void* __PInvoke(void* a, int c) => Platform.Concat((void**)a, c);
     }
 
-    static unsafe string Concat2(string[][] strss)
+    static unsafe string ConcatMatrix1(string[][] strss)
     {
         ArrayMarshaller<string[]> native1 = default;
         ArrayMarshaller<string> native2 = default;
-        HStringMarshaller ret = default;
+        HStringMarshaller1 ret = default;
         string managed = default;
 
         try
@@ -145,10 +156,10 @@ public class Program
                 string[] strs = strss[i];
 
                 Span<IntPtr> elements2 = native2.InitializeToNative<IntPtr>(strs, IntPtr.Size, ref states1[i]);
-                Span<HStringMarshaller> states2 = native2.GetStateCollection<HStringMarshaller>();
+                Span<HStringMarshaller1> states2 = native2.GetStateCollection<HStringMarshaller1>();
                 for (int j = 0; j < strs.Length; ++j)
                 {
-                    ref HStringMarshaller hstring = ref states2[j];
+                    ref HStringMarshaller1 hstring = ref states2[j];
                     hstring.FromManagedValue(strs[j]);
                     elements2[j] = hstring.ToNativeValue();
                 }
@@ -172,7 +183,7 @@ public class Program
             for (int i = 0; i < states1.Length; ++i)
             {
                 native2.InitializeFreeNative(ref states1[i]);
-                Span<HStringMarshaller> states2 = native2.GetStateCollection<HStringMarshaller>();
+                Span<HStringMarshaller1> states2 = native2.GetStateCollection<HStringMarshaller1>();
                 for (int j = 0; j < states2.Length; ++j)
                 {
                     states2[j].FreeNative();
@@ -186,6 +197,129 @@ public class Program
         return managed;
 
         // P/Invoke declaration
-        static void* __PInvoke(void* a, int c) => Platform.Concat2((void***)a, c);
+        static void* __PInvoke(void* a, int c) => Platform.ConcatMatrix((void***)a, c);
+    }
+
+    static unsafe string ToUpper2(string str)
+    {
+        HStringMarshaller2.State state = default;
+        string managed;
+
+        try
+        {
+            // Marshal
+            void* nstr = (void*)HStringMarshaller2.InitializeToNativeValue(str, ref state);
+
+            // Invoke
+            void* nres = __PInvoke(nstr);
+
+            // Unmarshal
+            managed = HStringMarshaller2.ToManaged((IntPtr)nres);
+        }
+        finally
+        {
+            // Clean up
+            HStringMarshaller2.FreeNative(ref state);
+        }
+
+        return managed;
+
+        // P/Invoke declaration
+        static void* __PInvoke(void* s) => Platform.ToUpper(s);
+    }
+
+    static unsafe string Concat2(string[] strs)
+    {
+        ArrayMarshaller<string> native = default;
+        string managed = default;
+
+        try
+        {
+            // Marshal
+            Span<IntPtr> elements = native.InitializeToNative<IntPtr>(strs, IntPtr.Size, sizeof(HStringMarshaller2.State));
+            Span<HStringMarshaller2.State> states = native.GetStateCollection<HStringMarshaller2.State>();
+            for (int i = 0; i < strs.Length; ++i)
+            {
+                elements[i] = HStringMarshaller2.InitializeToNativeValue(strs[i], ref states[i]);
+            }
+            void* nstrs = (void*)native.ToNative();
+
+            // Invoke
+            void* nres = __PInvoke(nstrs, elements.Length);
+
+            // Unmarshal
+            managed = HStringMarshaller2.ToManaged((IntPtr)nres);
+        }
+        finally
+        {
+            // Clean up
+            Span<HStringMarshaller2.State> states = native.GetStateCollection<HStringMarshaller2.State>();
+            for (int i = 0; i < states.Length; ++i)
+            {
+                HStringMarshaller2.FreeNative(ref states[i]);
+            }
+            native.FreeNative();
+        }
+
+        return managed;
+
+        // P/Invoke declaration
+        static void* __PInvoke(void* a, int c) => Platform.Concat((void**)a, c);
+    }
+
+    static unsafe string ConcatMatrix2(string[][] strss)
+    {
+        ArrayMarshaller<string[]> native1 = default;
+        ArrayMarshaller<string> native2 = default;
+        string managed = default;
+
+        try
+        {
+            // Marshal
+            Span<IntPtr> elements1 = native1.InitializeToNative<IntPtr>(strss, IntPtr.Size, sizeof(ArrayMarshaller<string[]>.State));
+            Span<ArrayMarshaller<string>.State> states1 = native1.GetStateCollection<ArrayMarshaller<string>.State>();
+            for (int i = 0; i < strss.Length; ++i)
+            {
+                string[] strs = strss[i];
+
+                Span<IntPtr> elements2 = native2.InitializeToNative<IntPtr>(strs, IntPtr.Size, ref states1[i]);
+                Span<HStringMarshaller2.State> states2 = native2.GetStateCollection<HStringMarshaller2.State>();
+                for (int j = 0; j < strs.Length; ++j)
+                {
+                    elements2[j] = HStringMarshaller2.InitializeToNativeValue(strs[j], ref states2[j]);
+                }
+
+                elements1[i] = native2.ToNative();
+            }
+
+            void* nstrs = (void*)native1.ToNative();
+
+            // Invoke
+            void* nres = __PInvoke(nstrs, elements1.Length);
+
+            // Unmarshal
+            managed = HStringMarshaller2.ToManaged((IntPtr)nres);
+        }
+        finally
+        {
+            // Clean up
+            Span<ArrayMarshaller<string>.State> states1 = native1.GetStateCollection<ArrayMarshaller<string>.State>();
+            for (int i = 0; i < states1.Length; ++i)
+            {
+                native2.InitializeFreeNative(ref states1[i]);
+                Span<HStringMarshaller2.State> states2 = native2.GetStateCollection<HStringMarshaller2.State>();
+                for (int j = 0; j < states2.Length; ++j)
+                {
+                    HStringMarshaller2.FreeNative(ref states2[j]);
+                }
+                native2.FreeNative();
+            }
+            native1.FreeNative();
+        }
+
+        return managed;
+
+        // P/Invoke declaration
+        static void* __PInvoke(void* a, int c) => Platform.ConcatMatrix((void***)a, c);
     }
 }

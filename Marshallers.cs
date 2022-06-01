@@ -2,9 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
-using System.Runtime.InteropServices;
 
-public unsafe struct HStringMarshaller
+public unsafe struct HStringMarshaller1
 {
     IntPtr _native;
 
@@ -33,6 +32,36 @@ public unsafe struct HStringMarshaller
 
     public void FreeNative()
         => Platform.WindowsDeleteString((void*)_native);
+}
+
+public unsafe struct HStringMarshaller2
+{
+    public struct State
+    {
+        public IntPtr Native;
+    }
+
+    public static IntPtr InitializeToNativeValue(string str, ref State state)
+    {
+        fixed (char* ptr = str)
+        {
+            void* alloc;
+            Platform.WindowsCreateString(ptr, (uint)str.Length, &alloc);
+            state.Native = (IntPtr)alloc;
+        }
+
+        return state.Native;
+    }
+
+    public static string ToManaged(IntPtr ptr)
+    {
+        var res = new string((char*)ptr);
+        Platform.Free((void*)ptr);
+        return res;
+    }
+
+    public static void FreeNative(ref State state)
+        => Platform.WindowsDeleteString((void*)state.Native);
 }
 
 public unsafe ref struct ArrayMarshaller<T>

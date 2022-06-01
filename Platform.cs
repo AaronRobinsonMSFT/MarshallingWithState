@@ -44,10 +44,10 @@ static unsafe class Platform
         return res;
     }
 
-    public static delegate* unmanaged<void***, int, void*> Concat2 = &_Concat2;
+    public static delegate* unmanaged<void***, int, void*> ConcatMatrix = &_ConcatMatrix;
 
     [UnmanagedCallersOnly]
-    private static void* _Concat2(void*** hstrings, int count)
+    private static void* _ConcatMatrix(void*** hstrings, int count)
     {
         var builder = new StringBuilder();
         var outer = new Span<IntPtr>((void*)hstrings, count);
