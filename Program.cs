@@ -15,7 +15,8 @@ public class Program
     {
         if (args.Length == 0)
         {
-            // Sanity check
+            // Sanity check. Pass 'true` to InitializeAllocators() to track
+            // allocations and confirm native memory is properly cleaned up.
             using var _ = Platform.InitializeAllocators(tracking: false);
             Console.WriteLine(ToUpper1(s_helloworld));
             Console.WriteLine(Concat1(s_array));
