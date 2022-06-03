@@ -2,6 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 public unsafe struct HStringMarshaller1
 {
@@ -23,12 +25,12 @@ public unsafe struct HStringMarshaller1
     public void FromNativeValue(IntPtr value)
     {
         if (_native != IntPtr.Zero)
-            Platform.Free((void*)_native);
+            Platform.WindowsDeleteString((void*)_native);
         _native = value;
     }
 
     public string ToManaged()
-        => new string((char*)_native);
+        => new string(Platform.WindowsGetStringRawBuffer((void*)_native));
 
     public void FreeNative()
         => Platform.WindowsDeleteString((void*)_native);
@@ -55,13 +57,62 @@ public unsafe struct HStringMarshaller2
 
     public static string ToManaged(IntPtr ptr)
     {
-        var res = new string((char*)ptr);
-        Platform.Free((void*)ptr);
+        var res = new string(Platform.WindowsGetStringRawBuffer((void*)ptr));
+        Platform.WindowsDeleteString((void*)ptr);
         return res;
     }
 
     public static void FreeNative(ref State state)
         => Platform.WindowsDeleteString((void*)state.Native);
+}
+
+public unsafe struct HStringMarshaller3
+{
+    public static IntPtr ConvertToNativeValue(string str)
+    {
+        fixed (char* ptr = str)
+        {
+            void* alloc;
+            Platform.WindowsCreateString(ptr, (uint)str.Length, &alloc);
+            return (IntPtr)alloc;
+        }
+    }
+
+    public static string ConvertToManaged(IntPtr ptr)
+    {
+        var res = new string(Platform.WindowsGetStringRawBuffer((void*)ptr));
+        Platform.WindowsDeleteString((void*)ptr);
+        return res;
+    }
+
+    public static void FreeNativeValue(IntPtr native)
+        => Platform.WindowsDeleteString((void*)native);
+
+    public ref struct InDirection
+    {
+        // Marshalling state
+        private string _managed;
+        private Platform.HSTRING_HEADER _hstring_header;
+
+        public void FromManaged(string str)
+        {
+            _managed = str;
+        }
+
+        public ref char GetPinnableReference()
+        {
+            return ref Unsafe.AsRef(in _managed.GetPinnableReference());
+        }
+
+        public IntPtr ToNativeValue()
+        {
+            var str = (byte*)Unsafe.AsPointer(ref GetPinnableReference());
+            void* alloc;
+            fixed (Platform.HSTRING_HEADER* header = &_hstring_header)
+            Platform.WindowsCreateStringReference(str, (uint)_managed.Length, header, &alloc);
+            return (IntPtr)alloc;
+        }
+    }
 }
 
 public unsafe ref struct ArrayMarshaller<T>

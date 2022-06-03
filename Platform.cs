@@ -17,7 +17,7 @@ static unsafe class Platform
     private static void* _ToUpper(void* hstring)
     {
         void* res;
-        var resStr = new string((char*)hstring).ToUpper();
+        var resStr = new string(WindowsGetStringRawBuffer(hstring)).ToUpper();
         fixed (char* ptr = resStr)
             WindowsCreateString(ptr, (uint)resStr.Length, &res);
 
@@ -33,7 +33,7 @@ static unsafe class Platform
         var arr = new Span<IntPtr>((void*)hstrings, count);
         for (int i = 0; i < count; i++)
         {
-            builder.Append(new string((char*)arr[i]));
+            builder.Append(new string(WindowsGetStringRawBuffer((void*)arr[i])));
         }
 
         void* res;
@@ -56,7 +56,7 @@ static unsafe class Platform
             var inner = new Span<IntPtr>((void*)outer[i], count);
             for (int j = 0; j < count; j++)
             {
-                builder.Append(new string((char*)inner[j]));
+                builder.Append(new string(WindowsGetStringRawBuffer((void*)inner[j])));
             }
         }
 
@@ -72,27 +72,23 @@ static unsafe class Platform
     // Pseudo HString APIs
     //
 
-    public static delegate* unmanaged<void*, uint, void**, int> WindowsCreateString = &_WindowsCreateString;
-
-    [UnmanagedCallersOnly]
-    private static int _WindowsCreateString(void* str, uint len, void** hstring)
+    [StructLayout(LayoutKind.Sequential, Size = 24)] // Uses 20 bytes for 32-bit or 24 bytes for 64-bit
+    public struct HSTRING_HEADER
     {
-        char* alloc = (char*)Platform.Alloc(sizeof(char) * (len + 1));
-        var src = new Span<char>(str, (int)len);
-        src.CopyTo(new Span<char>(alloc, (int)len));
-        alloc[len] = '\0';
-        *hstring = alloc;
-        return 0;
+        private void* _data1;
     }
 
-    public static delegate* unmanaged<void*, int> WindowsDeleteString = &_WindowsDeleteString;
+    [DllImport("api-ms-win-core-winrt-string-l1-1-0.dll", CallingConvention = CallingConvention.StdCall, ExactSpelling = true)]
+    public static extern int WindowsCreateString(void* sourceString, uint length, void** hstring);
 
-    [UnmanagedCallersOnly]
-    private static int _WindowsDeleteString(void* hstring)
-    {
-        Platform.Free(hstring);
-        return 0;
-    }
+    [DllImport("api-ms-win-core-winrt-string-l1-1-0.dll", CallingConvention = CallingConvention.StdCall, ExactSpelling = true)]
+    public static extern int WindowsCreateStringReference(void* sourceString, uint length, HSTRING_HEADER* header, void** hstring);
+
+    [DllImport("api-ms-win-core-winrt-string-l1-1-0.dll", CallingConvention = CallingConvention.StdCall, ExactSpelling = true)]
+    public static extern int WindowsDeleteString(void* hstring);
+
+    [DllImport("api-ms-win-core-winrt-string-l1-1-0.dll", CallingConvention = CallingConvention.StdCall, ExactSpelling = true)]
+    public static extern char* WindowsGetStringRawBuffer(void* hstring, int* length = null);
 
     //
     // Memory tracking APIs to ensure native memory is cleaned up properly.
