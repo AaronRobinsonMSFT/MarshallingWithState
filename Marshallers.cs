@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 public unsafe struct HStringMarshaller1
 {
@@ -36,7 +35,7 @@ public unsafe struct HStringMarshaller1
         => Platform.WindowsDeleteString((void*)_native);
 }
 
-public unsafe struct HStringMarshaller2
+public unsafe static class HStringMarshaller2
 {
     public struct State
     {

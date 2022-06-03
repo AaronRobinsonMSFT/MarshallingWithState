@@ -23,15 +23,15 @@ public class Program
             // allocations and confirm native memory is properly cleaned up.
             using var _ = Platform.InitializeAllocators(tracking: false);
 
-            Console.WriteLine(ToUpper1(s_helloworld));
+            Console.WriteLine(Copy1(s_helloworld));
             Console.WriteLine(Concat1(s_array));
             Console.WriteLine(ConcatMatrix1(s_3x3));
 
-            Console.WriteLine(ToUpper2(s_helloworld));
+            Console.WriteLine(Copy2(s_helloworld));
             Console.WriteLine(Concat2(s_array));
             Console.WriteLine(ConcatMatrix2(s_3x3));
 
-            Console.WriteLine(ToUpper3(s_helloworld));
+            Console.WriteLine(Copy3(s_helloworld));
             Console.WriteLine(Concat3(s_array));
             Console.WriteLine(ConcatMatrix3(s_3x3));
         }
@@ -50,7 +50,7 @@ public class Program
     public void GlobalCleanup() => _memTracker.Dispose();
 
     [Benchmark]
-    public string HString1() => ToUpper1(s_helloworld);
+    public string HString1() => Copy1(s_helloworld);
 
     [Benchmark]
     public string HStringArray1() => Concat1(s_array);
@@ -59,7 +59,7 @@ public class Program
     public string HStringMatrix1() => ConcatMatrix1(s_3x3);
 
     [Benchmark]
-    public string HString2() => ToUpper2(s_helloworld);
+    public string HString2() => Copy2(s_helloworld);
 
     [Benchmark]
     public string HStringArray2() => Concat2(s_array);
@@ -68,7 +68,7 @@ public class Program
     public string HStringMatrix2() => ConcatMatrix2(s_3x3);
 
     [Benchmark]
-    public string HString3() => ToUpper3(s_helloworld);
+    public string HString3() => Copy3(s_helloworld);
 
     [Benchmark]
     public string HStringArray3() => Concat3(s_array);
@@ -80,7 +80,7 @@ public class Program
     // Generated P/Invoke calls
     //
 
-    static unsafe string ToUpper1(string str)
+    static unsafe string Copy1(string str)
     {
         HStringMarshaller1 marshaller = default;
         string managed;
@@ -107,7 +107,7 @@ public class Program
         return managed;
 
         // P/Invoke declaration
-        static void* __PInvoke(void* s) => Platform.ToUpper(s);
+        static void* __PInvoke(void* s) => Platform.Copy(s);
     }
 
     static unsafe string Concat1(string[] strs)
@@ -215,7 +215,7 @@ public class Program
         static void* __PInvoke(void* a, int c) => Platform.ConcatMatrix((void***)a, c);
     }
 
-    static unsafe string ToUpper2(string str)
+    static unsafe string Copy2(string str)
     {
         HStringMarshaller2.State state = default;
         string managed;
@@ -240,7 +240,7 @@ public class Program
         return managed;
 
         // P/Invoke declaration
-        static void* __PInvoke(void* s) => Platform.ToUpper(s);
+        static void* __PInvoke(void* s) => Platform.Copy(s);
     }
 
     static unsafe string Concat2(string[] strs)
@@ -338,7 +338,7 @@ public class Program
         static void* __PInvoke(void* a, int c) => Platform.ConcatMatrix((void***)a, c);
     }
 
-    static unsafe string ToUpper3(string str)
+    static unsafe string Copy3(string str)
     {
         HStringMarshaller3.InDirection marshaller = default;
         void* nres;
@@ -360,7 +360,7 @@ public class Program
         return managed;
 
         // P/Invoke declaration
-        static void* __PInvoke(void* s) => Platform.ToUpper(s);
+        static void* __PInvoke(void* s) => Platform.Copy(s);
     }
 
     static unsafe string Concat3(string[] strs)

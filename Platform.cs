@@ -2,8 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
-using System.Text;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
 
 static unsafe class Platform
 {
@@ -11,15 +11,15 @@ static unsafe class Platform
     // Simulated native calls
     //
 
-    public static delegate* unmanaged<void*, void*> ToUpper = &_ToUpper;
+    public static delegate* unmanaged<void*, void*> Copy = &_Copy;
 
     [UnmanagedCallersOnly]
-    private static void* _ToUpper(void* hstring)
+    private static void* _Copy(void* hstring)
     {
         void* res;
-        var resStr = new string(WindowsGetStringRawBuffer(hstring)).ToUpper();
-        fixed (char* ptr = resStr)
-            WindowsCreateString(ptr, (uint)resStr.Length, &res);
+        char* ptr = WindowsGetStringRawBuffer(hstring);
+        uint len = (uint)MemoryMarshal.CreateReadOnlySpanFromNullTerminated(ptr).Length;
+        WindowsCreateString(ptr, len, &res);
 
         return res;
     }
@@ -29,17 +29,19 @@ static unsafe class Platform
     [UnmanagedCallersOnly]
     private static void* _Concat(void** hstrings, int count)
     {
-        var builder = new StringBuilder();
-        var arr = new Span<IntPtr>((void*)hstrings, count);
+        List<char> chars = new(count * 32); // Preallocate an anticipated capacity
+        var arr = new Span<IntPtr>(hstrings, count);
         for (int i = 0; i < count; i++)
         {
-            builder.Append(new string(WindowsGetStringRawBuffer((void*)arr[i])));
+            ReadOnlySpan<char> strRaw = MemoryMarshal.CreateReadOnlySpanFromNullTerminated(WindowsGetStringRawBuffer((void*)arr[i]));
+            for (int j = 0; j < strRaw.Length; j++)
+                chars.Add(strRaw[j]);
         }
 
         void* res;
-        var resStr = builder.ToString();
-        fixed (char* ptr = resStr)
-            WindowsCreateString(ptr, (uint)resStr.Length, &res);
+        Span<char> charsSpan = CollectionsMarshal.AsSpan(chars);
+        fixed (char* charsRaw = charsSpan)
+            WindowsCreateString(charsRaw, (uint)charsSpan.Length, &res);
 
         return res;
     }
@@ -49,21 +51,23 @@ static unsafe class Platform
     [UnmanagedCallersOnly]
     private static void* _ConcatMatrix(void*** hstrings, int count)
     {
-        var builder = new StringBuilder();
-        var outer = new Span<IntPtr>((void*)hstrings, count);
+        List<char> chars = new(count * count * 32); // Preallocate an anticipated capacity
+        var outer = new Span<IntPtr>(hstrings, count);
         for (int i = 0; i < count; i++)
         {
             var inner = new Span<IntPtr>((void*)outer[i], count);
             for (int j = 0; j < count; j++)
             {
-                builder.Append(new string(WindowsGetStringRawBuffer((void*)inner[j])));
+                ReadOnlySpan<char> strRaw = MemoryMarshal.CreateReadOnlySpanFromNullTerminated(WindowsGetStringRawBuffer((void*)inner[j]));
+                for (int k = 0; k < strRaw.Length; k++)
+                    chars.Add(strRaw[k]);
             }
         }
 
         void* res;
-        var resStr = builder.ToString();
-        fixed (char* ptr = resStr)
-            WindowsCreateString(ptr, (uint)resStr.Length, &res);
+        Span<char> charsSpan = CollectionsMarshal.AsSpan(chars);
+        fixed (char* charsRaw = charsSpan)
+            WindowsCreateString(charsRaw, (uint)charsSpan.Length, &res);
 
         return res;
     }
