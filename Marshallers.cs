@@ -65,7 +65,7 @@ public unsafe static class HStringMarshaller2
         => Platform.WindowsDeleteString((void*)state.Native);
 }
 
-public unsafe struct HStringMarshaller3
+public unsafe static class HStringMarshaller3
 {
     public static IntPtr ConvertToNativeValue(string str)
     {
@@ -114,7 +114,7 @@ public unsafe struct HStringMarshaller3
     }
 }
 
-public unsafe ref struct ArrayMarshaller<T>
+public unsafe struct ArrayMarshaller<T>
 {
     public struct State
     {
