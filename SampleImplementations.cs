@@ -24,7 +24,7 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
             handle.DangerousAddRef(ref _addRefd);
         }
 
-        public IntPtr ToNativeValue() => _handle.DangerousGetHandle();
+        public IntPtr ToNative() => _handle.DangerousGetHandle();
 
         public void FreeNative()
         {
@@ -35,7 +35,7 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
         }
     }
 
-    [CustomTypeMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder), CustomTypeMarshallerKind.Stateful, GuaranteedUnmarshal = true)]
+    [CustomTypeMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder), CustomTypeMarshallerKind.Stateful, GuaranteedUnmarshal = true, UnmanagedResources = true)]
     public struct Ref
     {
         private bool _addRefd;
@@ -57,9 +57,9 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
             _originalHandleValue = handle.DangerousGetHandle();
         }
 
-        public IntPtr ToNativeValue() => _originalHandleValue;
+        public IntPtr ToNative() => _originalHandleValue;
 
-        public void FromNativeValue(IntPtr value)
+        public void FromNative(IntPtr value)
         {
             if (value == _originalHandleValue)
             {
@@ -92,7 +92,7 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
             _newHandle = new T();
         }
 
-        public void FromNativeValue(IntPtr value)
+        public void FromNative(IntPtr value)
         {
             Marshal.InitHandle(_newHandle, value);
         }
@@ -128,7 +128,7 @@ static class StructWithSafeHandleFieldMarshaller
             _handle.DangerousAddRef(ref _addRefd);
         }
 
-        public Native ToNativeValue()
+        public Native ToNative()
         {
             return new Native { handle = _handle.DangerousGetHandle() };
         }
@@ -159,12 +159,12 @@ static class StructWithSafeHandleFieldMarshaller
             _handle.DangerousAddRef(ref _addRefd);
         }
 
-        public Native ToNativeValue()
+        public Native ToNative()
         {
             return new Native { handle = _handle.DangerousGetHandle() };
         }
 
-        public void FromNativeValue(Native native)
+        public void FromNative(Native native)
         {
             _nativeHandleValue = native.handle;
         }
@@ -195,7 +195,7 @@ static class StructWithSafeHandleFieldMarshaller
 [CustomTypeMarshaller(typeof(string), CustomTypeMarshallerKind.Stateless)]
 static class HStringMarshaller
 {
-    public static unsafe IntPtr ConvertToNativeValue(string str)
+    public static unsafe IntPtr ConvertToNative(string str)
     {
         void* hstring;
         fixed (char* ptr = str)
@@ -205,17 +205,17 @@ static class HStringMarshaller
         return (IntPtr)hstring;
     }
 
-    public static unsafe string ConvertToManagedValue(IntPtr hstring)
+    public static unsafe string ConvertToManaged(IntPtr hstring)
     {
         int length;
         char* rawBuffer = Platform.WindowsGetStringRawBuffer((void*)hstring, &length);
         return new string(rawBuffer, 0, length);
     }
 
-    public static unsafe void FreeNativeValue(IntPtr hstring)
+    public static unsafe void FreeNative(IntPtr hstring)
     {
         // We can ignore the HResult here as it's documented to always return S_OK.
-        // This ensures that we follow the guidance to not throw from FreeNativeValue
+        // This ensures that we follow the guidance to not throw from FreeNative
         _ = Platform.WindowsDeleteString((void*)hstring);
     }
 
@@ -231,7 +231,7 @@ static class HStringMarshaller
 
         public ref readonly char GetPinnableReference() => ref _str.GetPinnableReference();
 
-        public IntPtr ToNativeValue()
+        public IntPtr ToNative()
         {
             void* hstring;
             fixed (char* ptr = _str)
@@ -250,9 +250,9 @@ static class HStringMarshaller
 [CustomTypeMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder), CustomTypeMarshallerKind.Stateless)]
 static class DelegateMarshaller<T> where T : Delegate
 {
-    public static IntPtr ConvertToNativeValue(T del) => Marshal.GetFunctionPointerForDelegate(del);
+    public static IntPtr ConvertToNative(T del) => Marshal.GetFunctionPointerForDelegate(del);
 
-    public static T ConvertToManagedValue(IntPtr ptr) => Marshal.GetDelegateForFunctionPointer<T>(ptr);
+    public static T ConvertToManaged(IntPtr ptr) => Marshal.GetDelegateForFunctionPointer<T>(ptr);
 
     [CustomTypeMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder), CustomTypeMarshallerKind.Stateful, NotifyForSuccessfulInvoke = true)]
     public struct KeepAlive
@@ -265,14 +265,14 @@ static class DelegateMarshaller<T> where T : Delegate
             _nativeDelegate = Marshal.GetFunctionPointerForDelegate(_del);
         }
 
-        public IntPtr ToNativeValue() => _nativeDelegate;
+        public IntPtr ToNative() => _nativeDelegate;
 
         public void NotifyInvokeSucceeded()
         {
             GC.KeepAlive(_del);
         }
 
-        public void FromNativeValue(IntPtr value)
+        public void FromNative(IntPtr value)
         {
             _nativeDelegate = value;
         }

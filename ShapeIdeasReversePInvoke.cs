@@ -76,8 +76,8 @@ public unsafe static class Marshaller // Must be static class
     {
         public void FromManaged(TManaged managed) => throw null; // Optional caller allocation, Span<T>
         public ref byte GetPinnableReference() => throw null; // Optional, allowed on all "stateful" shapes
-        public TNative ToNativeValue() => throw null;
-        public void FreeNativeValue() => throw null; // Should not throw exceptions.
+        public TNative ToNative() => throw null;
+        public void FreeNative() => throw null; // Should not throw exceptions.
     }
 
     [CustomTypeMarshaller(typeof(TManaged), CustomTypeMarshallerKind.Stateful)]
@@ -85,27 +85,27 @@ public unsafe static class Marshaller // Must be static class
     {
         public void FromManaged(TManaged managed) => throw null; // Optional caller allocation, Span<T>
         public ref byte GetPinnableReference() => throw null; // Optional, allowed on all "stateful" shapes
-        public TNative ToNativeValue() => throw null; // Should not throw exceptions.
-        public void FromNativeValue(TNative native) => throw null; // Should not throw exceptions.
-        public TManaged ToManagedValue() => throw null;
-        public void FreeNativeValue() => throw null; // Should not throw exceptions.
+        public TNative ToNative() => throw null; // Should not throw exceptions.
+        public void FromNative(TNative native) => throw null; // Should not throw exceptions.
+        public TManaged ToManaged() => throw null;
+        public void FreeNative() => throw null; // Should not throw exceptions.
     }
 
     [CustomTypeMarshaller(typeof(TManaged), CustomTypeMarshallerKind.Stateful)]
     public unsafe ref struct NativeToManaged
     {
-        public void FromNativeValue(TNative native) => throw null;
-        public TManaged ToManagedValue() => throw null; // Should not throw exceptions.
-        public void FreeNativeValue() => throw null; // Should not throw exceptions.
+        public void FromNative(TNative native) => throw null;
+        public TManaged ToManaged() => throw null; // Should not throw exceptions.
+        public void FreeNative() => throw null; // Should not throw exceptions.
     }
 
     [CustomTypeMarshaller(typeof(TManaged), CustomTypeMarshallerKind.Stateless)] // Currently only support stateless. May support stateful in the future
     public static class Element
     {
         // Defined by public interface IMarshaller<TManaged, TNative> where TNative : unmanaged
-        public static TNative ConvertToNativeValue(TManaged managed) => throw null;
-        public static TManaged ConvertToManagedValue(TNative native) => throw null;
-        public static void FreeNativeValue(TNative native) => throw null; // Should not throw exceptions.
+        public static TNative ConvertToNative(TManaged managed) => throw null;
+        public static TManaged ConvertToManaged(TNative native) => throw null;
+        public static void FreeNative(TNative native) => throw null; // Should not throw exceptions.
     }
 }
 
@@ -119,7 +119,7 @@ public unsafe static class Marshaller // Must be static class
 public unsafe static class ArrayMarshaller<T> // Must be static class
 {
     // Defined by public interface IMarshaller<TManaged, TNative> where TNative : unmanaged
-    public static byte* ConvertToNativeValue<TNativeElement>(T[]? managed)
+    public static byte* ConvertToNative<TNativeElement>(T[]? managed)
         where TNativeElement : unmanaged
     {
         if (managed is null)
@@ -141,8 +141,8 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
     public static ReadOnlySpan<TNativeElement> GetNativeValuesSource<TNativeElement>(byte* nativeValue, int numElements)
         where TNativeElement : unmanaged => new Span<TNativeElement>(nativeValue, numElements);
 
-    public static T[] CreateManagedValueForNumElements(int length) => new T[length];
-    public static void FreeNativeValue(byte* native) => Marshal.FreeCoTaskMem((IntPtr)native);
+    public static T[] CreateManagedForNumElements(int length) => new T[length];
+    public static void FreeNative(byte* native) => Marshal.FreeCoTaskMem((IntPtr)native);
 
     // TODO: do we want to specify direction on CustomTypeMarshallerAttribute still?
     // It would simplify the analyzer as we'd know exactly which members to check for without having to look at
@@ -222,7 +222,7 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
         /// <remarks>
         /// <seealso cref="CustomTypeMarshallerFeatures.TwoStageMarshalling"/>
         /// </remarks>
-        public byte* ToNativeValue() => (byte*)Unsafe.AsPointer(ref GetPinnableReference());
+        public byte* ToNative() => (byte*)Unsafe.AsPointer(ref GetPinnableReference());
 
         /// <summary>
         /// Sets the native value representing the array.
@@ -231,7 +231,7 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
         /// <remarks>
         /// <seealso cref="CustomTypeMarshallerFeatures.TwoStageMarshalling"/>
         /// </remarks>
-        public void FromNativeValue(byte* value)
+        public void FromNative(byte* value)
         {
             _allocatedMemory = (IntPtr)value;
         }
@@ -304,7 +304,7 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
         /// Sets the native value representing the array.
         /// </summary>
         /// <param name="value">The native value.</param>
-        public void FromNativeValue(byte* value)
+        public void FromNative(byte* value)
         {
             _allocatedMemory = (IntPtr)value;
         }
@@ -382,17 +382,17 @@ public static unsafe partial class NativeImport
             _byval_m_.FromManaged(value);
             fixed (void* _byval_dummy_ = &_byval_m_.GetPinnableReference())
             {
-                _byval_ = _byval_m_.ToNativeValue();
+                _byval_ = _byval_m_.ToNative();
 
                 _in_m_.FromManaged(in_value);
                 fixed (void* _in_dummy_ = &_in_m_.GetPinnableReference())
                 {
-                    _in_ = _in_m_.ToNativeValue();
+                    _in_ = _in_m_.ToNative();
 
                     _ref_m_.FromManaged(ref_value);
                     fixed (void* _ref_dummy_ = &_ref_m_.GetPinnableReference())
                     {
-                        _ref_ = _ref_m_.ToNativeValue();
+                        _ref_ = _ref_m_.ToNative();
 
                         // Invoke
                         _ret_ = __PInvoke(_byval_, &_in_, &_ref_, &_out_);
@@ -401,23 +401,23 @@ public static unsafe partial class NativeImport
             }
 
             // Unmarshal
-            _ref_m_.FromNativeValue(_ref_);
-            ref_value = _ref_m_.ToManagedValue();
+            _ref_m_.FromNative(_ref_);
+            ref_value = _ref_m_.ToManaged();
 
-            _out_m_.FromNativeValue(_out_);
-            out_value = _out_m_.ToManagedValue();
+            _out_m_.FromNative(_out_);
+            out_value = _out_m_.ToManaged();
 
-            _ret_m_.FromNativeValue(_ret_);
-            _ret_value_ = _ret_m_.ToManagedValue();
+            _ret_m_.FromNative(_ret_);
+            _ret_value_ = _ret_m_.ToManaged();
         }
         finally
         {
             // Clean-up
-            _byval_m_.FreeNativeValue();
-            _in_m_.FreeNativeValue();
-            _ref_m_.FreeNativeValue();
-            _out_m_.FreeNativeValue();
-            _ret_m_.FreeNativeValue();
+            _byval_m_.FreeNative();
+            _in_m_.FreeNative();
+            _ref_m_.FreeNative();
+            _out_m_.FreeNative();
+            _ret_m_.FreeNative();
         }
 
         return _ret_value_;
@@ -467,7 +467,7 @@ public static unsafe partial class NativeImport
 
                 for (int i = 0; i < _byval_m_managed_source.Length; i++)
                 {
-                    _byval_m_native_source[i] = Marshaller.Element.ConvertToNativeValue(_byval_m_managed_source[i]);
+                    _byval_m_native_source[i] = Marshaller.Element.ConvertToNative(_byval_m_managed_source[i]);
                 }
             }
 
@@ -483,18 +483,18 @@ public static unsafe partial class NativeImport
 
                 for (int i = 0; i < _in_m_managed_source.Length; i++)
                 {
-                    _in_m_native_source[i] = Marshaller.Element.ConvertToNativeValue(_in_m_managed_source[i]);
+                    _in_m_native_source[i] = Marshaller.Element.ConvertToNative(_in_m_managed_source[i]);
                 }
             }
 
-            _ref_ = ArrayMarshaller<TManaged>.ConvertToNativeValue<IntPtr>(ref_value);
+            _ref_ = ArrayMarshaller<TManaged>.ConvertToNative<IntPtr>(ref_value);
             {
                 ReadOnlySpan<TManaged> _ref_m_managed_source = _byval_m_.GetManagedValuesSource();
                 Span<TNative> _ref_m_native_source = ArrayMarshaller<TManaged>.GetNativeValuesDestination<TNative>(_ref_, ArrayMarshaller<TManaged>.GetNumElements(ref_value));
 
                 for (int i = 0; i < _ref_m_managed_source.Length; i++)
                 {
-                    _ref_m_native_source[i] = Marshaller.Element.ConvertToNativeValue(_ref_m_managed_source[i]);
+                    _ref_m_native_source[i] = Marshaller.Element.ConvertToNative(_ref_m_managed_source[i]);
                 }
             }
 
@@ -502,13 +502,13 @@ public static unsafe partial class NativeImport
             fixed (void* _byval_blittable_ = &ArrayMarshaller<int>.In.GetPinnableReference(value_blittable))
             fixed (void* _byval_dummy_ = _byval_m_)
             {
-                _byval_ = _byval_m_.ToNativeValue();
+                _byval_ = _byval_m_.ToNative();
                 fixed (void* _out_byval_dummy_ = _out_byval_m_)
                 {
-                    _out_byval_ = _out_byval_m_.ToNativeValue();
+                    _out_byval_ = _out_byval_m_.ToNative();
                     fixed (void* _in_dummy_ = _in_m_)
                     {
-                        _in_ = _in_m_.ToNativeValue();
+                        _in_ = _in_m_.ToNative();
 
                         // Invoke
                         _ret_ = __PInvoke(_byval_blittable_, _byval_, _out_byval_, _in_, _ref_, &_out_);
@@ -517,9 +517,9 @@ public static unsafe partial class NativeImport
             }
 
             // Unmarshal setup
-            // We do FromNativeValue here to capture the native values so we do not leak if later unmarshalling throws.
-            _out_m_.FromNativeValue(_out_);
-            _ret_m_.FromNativeValue(_ret_);
+            // We do FromNative here to capture the native values so we do not leak if later unmarshalling throws.
+            _out_m_.FromNative(_out_);
+            _ret_m_.FromNative(_ret_);
 
             // Unmarshal
             {
@@ -528,18 +528,18 @@ public static unsafe partial class NativeImport
 
                 for (int i = 0; i < _out_byval_managed_destination.Length; i++)
                 {
-                    _out_byval_managed_destination[i] = Marshaller.Element.ConvertToManagedValue(_out_byval_native_source[i]);
+                    _out_byval_managed_destination[i] = Marshaller.Element.ConvertToManaged(_out_byval_native_source[i]);
                 }
             }
 
             {
-                TManaged[] ref_local = ArrayMarshaller<TManaged>.CreateManagedValueForNumElements(10);
+                TManaged[] ref_local = ArrayMarshaller<TManaged>.CreateManagedForNumElements(10);
                 Span<TManaged> ref_managed_values_destination = ArrayMarshaller<TManaged>.GetManagedValuesDestination(ref_local);
                 ReadOnlySpan<TNative> ref_native_values_source = ArrayMarshaller<TManaged>.GetNativeValuesSource<TNative>(_ref_, 10);
 
                 for (int i = 0; i < ref_managed_values_destination.Length; i++)
                 {
-                    ref_managed_values_destination[i] = Marshaller.Element.ConvertToManagedValue(ref_native_values_source[i]);
+                    ref_managed_values_destination[i] = Marshaller.Element.ConvertToManaged(ref_native_values_source[i]);
                 }
                 ref_value = ref_local;
             }
@@ -550,7 +550,7 @@ public static unsafe partial class NativeImport
 
                 for (int i = 0; i < out_managed_values_destination.Length; i++)
                 {
-                    out_managed_values_destination[i] = Marshaller.Element.ConvertToManagedValue(ref_native_values_source[i]);
+                    out_managed_values_destination[i] = Marshaller.Element.ConvertToManaged(ref_native_values_source[i]);
                 }
                 out_value = _out_m_.ToManaged();
             }
@@ -561,7 +561,7 @@ public static unsafe partial class NativeImport
 
                 for (int i = 0; i < ret_managed_values_destination.Length; i++)
                 {
-                    ret_managed_values_destination[i] = Marshaller.Element.ConvertToManagedValue(ref_native_values_source[i]);
+                    ret_managed_values_destination[i] = Marshaller.Element.ConvertToManaged(ref_native_values_source[i]);
                 }
                 _ret_value_ = _ret_m_.ToManaged();
             }
@@ -571,7 +571,7 @@ public static unsafe partial class NativeImport
             // Clean-up
             _byval_m_.FreeNative();
             _in_m_.FreeNative();
-            ArrayMarshaller<TManaged>.FreeNativeValue(_ref_);
+            ArrayMarshaller<TManaged>.FreeNative(_ref_);
             _out_m_.FreeNative();
             _ret_m_.FreeNative();
         }
