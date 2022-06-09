@@ -402,12 +402,11 @@ public static unsafe partial class NativeImport
 
             // Unmarshal
             _ref_m_.FromNative(_ref_);
-            ref_value = _ref_m_.ToManaged();
-
             _out_m_.FromNative(_out_);
-            out_value = _out_m_.ToManaged();
-
             _ret_m_.FromNative(_ret_);
+
+            ref_value = _ref_m_.ToManaged();
+            out_value = _out_m_.ToManaged();
             _ret_value_ = _ret_m_.ToManaged();
         }
         finally
