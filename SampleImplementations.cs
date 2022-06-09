@@ -26,7 +26,7 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
 
         public IntPtr ToNative() => _handle.DangerousGetHandle();
 
-        public void FreeNative()
+        public void Free()
         {
             if (_addRefd)
             {
@@ -74,7 +74,7 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
 
         public T ToManaged() => _handleToReturn;
 
-        public void FreeNative()
+        public void Free()
         {
             if (_addRefd)
             {
@@ -133,7 +133,7 @@ static class StructWithSafeHandleFieldMarshaller
             return new Native { handle = _handle.DangerousGetHandle() };
         }
 
-        public void FreeNative()
+        public void Free()
         {
             if (_addRefd)
             {
@@ -179,7 +179,7 @@ static class StructWithSafeHandleFieldMarshaller
             return new StructWithSafeHandleField { handle = _handle };
         }
 
-        public void FreeNative()
+        public void Free()
         {
             if (_addRefd)
             {

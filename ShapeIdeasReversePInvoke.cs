@@ -26,7 +26,7 @@ public sealed class CustomTypeMarshallerAttribute : Attribute
 {
     public CustomTypeMarshallerAttribute(Type managedType, CustomTypeMarshallerKind kind) { }
     public CustomTypeMarshallerAttribute(Type managedType, CustomTypeMarshallerKind kind, int bufferSize) { }
-    // The marshaller type must implement a `void FreeNative()` method. This method should not throw any exceptions
+    // The marshaller type must implement a `void Free()` method. This method should not throw any exceptions
     public bool UnmanagedResources { get; set; }
     // The marshaller must implement a `void NotifyInvokeSucceeded()` method.
     // This method will be called by any source-generated marshaller after the "target invocation" has successfully completed.
@@ -77,7 +77,7 @@ public unsafe static class Marshaller // Must be static class
         public void FromManaged(TManaged managed) => throw null; // Optional caller allocation, Span<T>
         public ref byte GetPinnableReference() => throw null; // Optional, allowed on all "stateful" shapes
         public TNative ToNative() => throw null;
-        public void FreeNative() => throw null; // Should not throw exceptions.
+        public void Free() => throw null; // Should not throw exceptions.
     }
 
     [CustomTypeMarshaller(typeof(TManaged), CustomTypeMarshallerKind.Stateful)]
@@ -88,7 +88,7 @@ public unsafe static class Marshaller // Must be static class
         public TNative ToNative() => throw null; // Should not throw exceptions.
         public void FromNative(TNative native) => throw null; // Should not throw exceptions.
         public TManaged ToManaged() => throw null;
-        public void FreeNative() => throw null; // Should not throw exceptions.
+        public void Free() => throw null; // Should not throw exceptions.
     }
 
     [CustomTypeMarshaller(typeof(TManaged), CustomTypeMarshallerKind.Stateful)]
@@ -96,7 +96,7 @@ public unsafe static class Marshaller // Must be static class
     {
         public void FromNative(TNative native) => throw null;
         public TManaged ToManaged() => throw null; // Should not throw exceptions.
-        public void FreeNative() => throw null; // Should not throw exceptions.
+        public void Free() => throw null; // Should not throw exceptions.
     }
 
     [CustomTypeMarshaller(typeof(TManaged), CustomTypeMarshallerKind.Stateless)] // Currently only support stateless. May support stateful in the future
@@ -250,7 +250,7 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
         /// <remarks>
         /// <seealso cref="CustomTypeMarshallerFeatures.UnmanagedResources"/>
         /// </remarks>
-        public void FreeNative()
+        public void Free()
         {
             Marshal.FreeCoTaskMem(_allocatedMemory);
         }
@@ -320,7 +320,7 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
         /// <remarks>
         /// <seealso cref="CustomTypeMarshallerFeatures.UnmanagedResources"/>
         /// </remarks>
-        public void FreeNative()
+        public void Free()
         {
             Marshal.FreeCoTaskMem(_allocatedMemory);
         }
@@ -400,11 +400,13 @@ public static unsafe partial class NativeImport
                 }
             }
 
-            // Unmarshal
+            // Unmarshal setup
+            // We do FromNative here to capture the native values so we do not leak if later unmarshalling throws.
             _ref_m_.FromNative(_ref_);
             _out_m_.FromNative(_out_);
             _ret_m_.FromNative(_ret_);
 
+            // Unmarshal
             ref_value = _ref_m_.ToManaged();
             out_value = _out_m_.ToManaged();
             _ret_value_ = _ret_m_.ToManaged();
@@ -412,11 +414,11 @@ public static unsafe partial class NativeImport
         finally
         {
             // Clean-up
-            _byval_m_.FreeNative();
-            _in_m_.FreeNative();
-            _ref_m_.FreeNative();
-            _out_m_.FreeNative();
-            _ret_m_.FreeNative();
+            _byval_m_.Free();
+            _in_m_.Free();
+            _ref_m_.Free();
+            _out_m_.Free();
+            _ret_m_.Free();
         }
 
         return _ret_value_;
@@ -568,11 +570,11 @@ public static unsafe partial class NativeImport
         finally
         {
             // Clean-up
-            _byval_m_.FreeNative();
-            _in_m_.FreeNative();
+            _byval_m_.Free();
+            _in_m_.Free();
             ArrayMarshaller<TManaged>.FreeNative(_ref_);
-            _out_m_.FreeNative();
-            _ret_m_.FreeNative();
+            _out_m_.Free();
+            _ret_m_.Free();
         }
 
         return _ret_value_;
