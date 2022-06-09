@@ -220,21 +220,27 @@ static class HStringMarshaller
     }
 
     [CustomTypeMarshaller(typeof(string), CustomTypeMarshallerKind.Stateful)]
-    public unsafe struct In
+    public unsafe ref struct In // Marked as a ref struct
     {
+        private string _str;
         private Platform.HSTRING_HEADER header;
-        private void* hstring;
         public unsafe void FromManaged(string s)
         {
-            fixed (char* ptr = s)
-            fixed (Platform.HSTRING_HEADER* headerPtr = &header)
-            fixed (void** hstringPtr = &hstring)
-            {
-                Marshal.ThrowExceptionForHR(Platform.WindowsCreateStringReference(ptr, (uint)s.Length, headerPtr, hstringPtr));
-            }
+            _str = s;
         }
 
-        public IntPtr ToNativeValue() => (IntPtr)hstring;
+        public ref readonly char GetPinnableReference() => ref _str.GetPinnableReference();
+
+        public IntPtr ToNativeValue()
+        {
+            void* hstring;
+            fixed (char* ptr = _str)
+            fixed (Platform.HSTRING_HEADER* headerPtr = &header)
+            {
+                Marshal.ThrowExceptionForHR(Platform.WindowsCreateStringReference(ptr, (uint)_str.Length, headerPtr, &hstring));
+            }
+            return (IntPtr)hstring;
+        }
     }
 }
 
