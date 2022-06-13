@@ -10,11 +10,11 @@ namespace ShapeIdeasReversePInvoke;
 
 // Reverse P/Invoke unsupported.
 // Element marshalling is unsupported until we can write stateful element marshallers
-[ManagedToUnmanagedMarshallers(typeof(SafeHandleMarshaller<>.In), typeof(SafeHandleMarshaller<>.Ref), typeof(SafeHandleMarshaller<>.Out))]
+[ManagedToUnmanagedMarshallers(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder), typeof(SafeHandleMarshaller<>.In), typeof(SafeHandleMarshaller<>.Ref), typeof(SafeHandleMarshaller<>.Out))]
 public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Require SafeHandles to be a concrete type and have a public parameterless constructor.
 {
-    [CustomTypeMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder), CustomTypeMarshallerKind.Stateful, UnmanagedResources = true)]
-    public struct In
+    [CustomTypeMarshaller(hasState: true)]
+    public struct In : IDisposable
     {
         private bool _addRefd;
         private T _handle;
@@ -24,9 +24,9 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
             handle.DangerousAddRef(ref _addRefd);
         }
 
-        public IntPtr ToNative() => _handle.DangerousGetHandle();
+        public IntPtr ToUnmanaged() => _handle.DangerousGetHandle();
 
-        public void Free()
+        public void Dispose()
         {
             if (_addRefd)
             {
@@ -35,8 +35,8 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
         }
     }
 
-    [CustomTypeMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder), CustomTypeMarshallerKind.Stateful, GuaranteedUnmarshal = true, UnmanagedResources = true)]
-    public struct Ref
+    [CustomTypeMarshaller(hasState: true, GuaranteedUnmarshal = true)]
+    public struct Ref : IDisposable
     {
         private bool _addRefd;
         private T _handle;
@@ -57,9 +57,9 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
             _originalHandleValue = handle.DangerousGetHandle();
         }
 
-        public IntPtr ToNative() => _originalHandleValue;
+        public IntPtr ToUnmanaged() => _originalHandleValue;
 
-        public void FromNative(IntPtr value)
+        public void FromUnmanaged(IntPtr value)
         {
             if (value == _originalHandleValue)
             {
@@ -74,7 +74,7 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
 
         public T ToManaged() => _handleToReturn;
 
-        public void Free()
+        public void Dispose()
         {
             if (_addRefd)
             {
@@ -83,7 +83,7 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
         }
     }
 
-    [CustomTypeMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder), CustomTypeMarshallerKind.Stateful, GuaranteedUnmarshal = true)]
+    [CustomTypeMarshaller(hasState: true, GuaranteedUnmarshal = true)]
     public struct Out
     {
         private T _newHandle;
@@ -92,7 +92,7 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
             _newHandle = new T();
         }
 
-        public void FromNative(IntPtr value)
+        public void FromUnmanaged(IntPtr value)
         {
             Marshal.InitHandle(_newHandle, value);
         }
@@ -101,7 +101,7 @@ public static class SafeHandleMarshaller<T> where T : SafeHandle, new() // Requi
     }
 }
 
-// [NativeMarshalling(typeof(StructWithSafeHandleFieldMarshaller))]
+// [UnmanagedMarshalling(typeof(StructWithSafeHandleFieldMarshaller))]
 struct StructWithSafeHandleField
 {
     public SafeFileHandle handle;
@@ -109,13 +109,13 @@ struct StructWithSafeHandleField
 
 // P/Invoke Out and Reverse P/Invoke unsupported.
 // Element marshalling unsupported until we add support for stateful element marshallers
-[ManagedToUnmanagedMarshallers(typeof(In), typeof(Ref), null)]
+[ManagedToUnmanagedMarshallers(typeof(StructWithSafeHandleField), typeof(In), typeof(Ref), null)]
 static class StructWithSafeHandleFieldMarshaller
 {
-    [CustomTypeMarshaller(typeof(StructWithSafeHandleField), CustomTypeMarshallerKind.Stateful, UnmanagedResources = true)]
-    public struct In
+    [CustomTypeMarshaller(hasState: true)]
+    public struct In : IDisposable
     {
-        public struct Native
+        public struct Unmanaged
         {
             public IntPtr handle;
         }
@@ -128,12 +128,12 @@ static class StructWithSafeHandleFieldMarshaller
             _handle.DangerousAddRef(ref _addRefd);
         }
 
-        public Native ToNative()
+        public Unmanaged ToUnmanaged()
         {
-            return new Native { handle = _handle.DangerousGetHandle() };
+            return new Unmanaged { handle = _handle.DangerousGetHandle() };
         }
 
-        public void Free()
+        public void Dispose()
         {
             if (_addRefd)
             {
@@ -142,10 +142,10 @@ static class StructWithSafeHandleFieldMarshaller
         }
     }
 
-    [CustomTypeMarshaller(typeof(StructWithSafeHandleField), CustomTypeMarshallerKind.Stateful, UnmanagedResources = true)]
-    public struct Ref
+    [CustomTypeMarshaller(hasState: true)]
+    public struct Ref : IDisposable
     {
-        public struct Native
+        public struct Unmanaged
         {
             public IntPtr handle;
         }
@@ -159,12 +159,12 @@ static class StructWithSafeHandleFieldMarshaller
             _handle.DangerousAddRef(ref _addRefd);
         }
 
-        public Native ToNative()
+        public Unmanaged ToUnmanaged()
         {
-            return new Native { handle = _handle.DangerousGetHandle() };
+            return new Unmanaged { handle = _handle.DangerousGetHandle() };
         }
 
-        public void FromNative(Native native)
+        public void FromUnmanaged(Unmanaged native)
         {
             _nativeHandleValue = native.handle;
         }
@@ -179,7 +179,7 @@ static class StructWithSafeHandleFieldMarshaller
             return new StructWithSafeHandleField { handle = _handle };
         }
 
-        public void Free()
+        public void Dispose()
         {
             if (_addRefd)
             {
@@ -189,13 +189,13 @@ static class StructWithSafeHandleFieldMarshaller
     }
 }
 
-[ManagedToUnmanagedMarshallers(typeof(HStringMarshaller.In), typeof(HStringMarshaller), typeof(HStringMarshaller))]
-[UnmanagedToManagedMarshallers(typeof(HStringMarshaller), typeof(HStringMarshaller), typeof(HStringMarshaller))]
-[ElementMarshaller(typeof(HStringMarshaller))]
-[CustomTypeMarshaller(typeof(string), CustomTypeMarshallerKind.Stateless)]
+[ManagedToUnmanagedMarshallers(typeof(string), typeof(HStringMarshaller.In), typeof(HStringMarshaller), typeof(HStringMarshaller))]
+[UnmanagedToManagedMarshallers(typeof(string), typeof(HStringMarshaller), typeof(HStringMarshaller), typeof(HStringMarshaller))]
+[ElementMarshaller(typeof(string), typeof(HStringMarshaller))]
+[CustomTypeMarshaller(hasState: false)]
 static class HStringMarshaller
 {
-    public static unsafe IntPtr ConvertToNative(string str)
+    public static unsafe IntPtr ConvertToUnmanaged(string str)
     {
         void* hstring;
         fixed (char* ptr = str)
@@ -212,14 +212,14 @@ static class HStringMarshaller
         return new string(rawBuffer, 0, length);
     }
 
-    public static unsafe void FreeNative(IntPtr hstring)
+    public static unsafe void Dispose(IntPtr hstring)
     {
         // We can ignore the HResult here as it's documented to always return S_OK.
-        // This ensures that we follow the guidance to not throw from FreeNative
+        // This ensures that we follow the guidance to not throw from FreeUnmanaged
         _ = Platform.WindowsDeleteString((void*)hstring);
     }
 
-    [CustomTypeMarshaller(typeof(string), CustomTypeMarshallerKind.Stateful)]
+    [CustomTypeMarshaller(hasState: false)]
     public unsafe ref struct In // Marked as a ref struct
     {
         private string _str;
@@ -231,7 +231,7 @@ static class HStringMarshaller
 
         public ref readonly char GetPinnableReference() => ref _str.GetPinnableReference();
 
-        public IntPtr ToNative()
+        public IntPtr ToUnmanaged()
         {
             void* hstring;
             fixed (char* ptr = _str)
@@ -245,16 +245,16 @@ static class HStringMarshaller
 }
 
 // Marshals a System.Delegate-derived type to and from native code, keeping the managed delegate instance alive across the call.
-[ManagedToUnmanagedMarshallers(typeof(DelegateMarshaller<>.KeepAlive), typeof(DelegateMarshaller<>.KeepAlive), typeof(DelegateMarshaller<>))]
-[UnmanagedToManagedMarshallers(typeof(DelegateMarshaller<>), typeof(DelegateMarshaller<>), typeof(DelegateMarshaller<>))]
-[CustomTypeMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder), CustomTypeMarshallerKind.Stateless)]
+[ManagedToUnmanagedMarshallers(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder), typeof(DelegateMarshaller<>.KeepAlive), typeof(DelegateMarshaller<>.KeepAlive), typeof(DelegateMarshaller<>))]
+[UnmanagedToManagedMarshallers(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder), typeof(DelegateMarshaller<>), typeof(DelegateMarshaller<>), typeof(DelegateMarshaller<>))]
+[CustomTypeMarshaller(hasState: false)]
 static class DelegateMarshaller<T> where T : Delegate
 {
-    public static IntPtr ConvertToNative(T del) => Marshal.GetFunctionPointerForDelegate(del);
+    public static IntPtr ConvertToUnmanaged(T del) => Marshal.GetFunctionPointerForDelegate(del);
 
     public static T ConvertToManaged(IntPtr ptr) => Marshal.GetDelegateForFunctionPointer<T>(ptr);
 
-    [CustomTypeMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder), CustomTypeMarshallerKind.Stateful, NotifyForSuccessfulInvoke = true)]
+    [CustomTypeMarshaller(hasState: false, NotifyForSuccessfulInvoke = true)]
     public struct KeepAlive
     {
         private T _del;
@@ -265,14 +265,17 @@ static class DelegateMarshaller<T> where T : Delegate
             _nativeDelegate = Marshal.GetFunctionPointerForDelegate(_del);
         }
 
-        public IntPtr ToNative() => _nativeDelegate;
+        public IntPtr ToUnmanaged() => _nativeDelegate;
 
+        // Instead of providing a new method hook that really only has one usage scenario,
+        // we could instead recognize an overload of ToUnmanaged with the following signature (TOther can be any non-byref-like type): TUnmanaged ToUnmanaged(out TOther keepAlive);
+        // When this overload is provided, the generator will recognize the overload and keep alive the out parameter value across the native call.
         public void NotifyInvokeSucceeded()
         {
             GC.KeepAlive(_del);
         }
 
-        public void FromNative(IntPtr value)
+        public void FromUnmanaged(IntPtr value)
         {
             _nativeDelegate = value;
         }

@@ -10,24 +10,19 @@ namespace ShapeIdeasReversePInvoke;
 #nullable enable
 #pragma warning disable CS8597
 
-// [NativeTypeMarshalling(typeof(Marshaller))]
+// [UnmanagedTypeMarshalling(typeof(Marshaller))]
 public struct TManaged { }
-public struct TNative { }
-
-public enum CustomTypeMarshallerKind
-{
-    Stateless,
-    StatelessLinearCollection,
-    Stateful,
-    StatefulLinearCollection
-}
+public struct TUnmanaged { }
 
 public sealed class CustomTypeMarshallerAttribute : Attribute
 {
-    public CustomTypeMarshallerAttribute(Type managedType, CustomTypeMarshallerKind kind) { }
-    public CustomTypeMarshallerAttribute(Type managedType, CustomTypeMarshallerKind kind, int bufferSize) { }
-    // The marshaller type must implement a `void Free()` method. This method should not throw any exceptions
-    public bool UnmanagedResources { get; set; }
+    // We use a bool parameter here instead of an enum since we are going to move to interfaces in C# v.Next
+    // to define our shapes as ref-struct generic parameters and ref-structs implementing interfaces are
+    // planned for C# v.Next as one of the large features.
+    // This way, we can [Obsolete] these constructors, introduce new ones that don't take the bool,
+    // and push people to use the interfaces without having to obsolete a new type (ie. a CustomTypeMarshallerKind enum).
+    public CustomTypeMarshallerAttribute(bool hasState) { }
+    public CustomTypeMarshallerAttribute(bool hasState, int bufferSize) { }
     // The marshaller must implement a `void NotifyInvokeSucceeded()` method.
     // This method will be called by any source-generated marshaller after the "target invocation" has successfully completed.
     public bool NotifyForSuccessfulInvoke { get; set; }
@@ -39,7 +34,7 @@ public sealed class CustomTypeMarshallerAttribute : Attribute
 // Specify marshallers for P/Invoke scenarios
 public sealed class ManagedToUnmanagedMarshallersAttribute : Attribute
 {
-    public ManagedToUnmanagedMarshallersAttribute(Type? inMarshaller, Type? refMarshaller, Type? outMarshaller)
+    public ManagedToUnmanagedMarshallersAttribute(Type managedType, Type? inMarshaller, Type? refMarshaller, Type? outMarshaller)
     {
 
     }
@@ -48,7 +43,7 @@ public sealed class ManagedToUnmanagedMarshallersAttribute : Attribute
 // Specify marshallers for Reverse P/Invoke scenarios
 public sealed class UnmanagedToManagedMarshallersAttribute : Attribute
 {
-    public UnmanagedToManagedMarshallersAttribute(Type? inMarshaller, Type? refMarshaller, Type? outMarshaller)
+    public UnmanagedToManagedMarshallersAttribute(Type managedType, Type? inMarshaller, Type? refMarshaller, Type? outMarshaller)
     {
 
     }
@@ -57,116 +52,130 @@ public sealed class UnmanagedToManagedMarshallersAttribute : Attribute
 // Specify marshaller for array-element marshalling and default struct field marshalling
 public sealed class ElementMarshallerAttribute : Attribute
 {
-    public ElementMarshallerAttribute(Type elementMarshaller)
+    public ElementMarshallerAttribute(Type managedType, Type elementMarshaller)
     {
 
     }
 }
 
+// Specifies that a particular generic parameter is the collection element's unmanaged type.
+// If this attribute is provided on a generic parameter of a marshaller, then the generator will assume that it is a linear collection
+// marshaller.
+// TODO: This only works if we plan to move towards interfaces in the future. Otherwise if we ever introduce another collection shape, we'll
+// have to disambiguate somehow.
+// See the comment in CustomTypeMarshallerAttribute about the bool parameters in the constructors.
+[AttributeUsage(AttributeTargets.GenericParameter)]
+public sealed class ElementUnmanagedTypeAttribute : Attribute
+{
+}
+
 [ManagedToUnmanagedMarshallers(
-    typeof(ManagedToNative),
+    typeof(TManaged),
+    typeof(ManagedToUnmanaged),
     typeof(Bidirectional),
-    typeof(NativeToManaged))]
-[UnmanagedToManagedMarshallers(typeof(NativeToManaged), typeof(Bidirectional), typeof(ManagedToNative))]
-[ElementMarshaller(typeof(Element))]
+    typeof(UnmanagedToManaged))]
+[UnmanagedToManagedMarshallers(
+    typeof(TManaged),
+    typeof(UnmanagedToManaged),
+    typeof(Bidirectional),
+    typeof(ManagedToUnmanaged))]
+[ElementMarshaller(
+    typeof(TManaged),
+    typeof(Element))]
 public unsafe static class Marshaller // Must be static class
 {
-    [CustomTypeMarshaller(typeof(TManaged), CustomTypeMarshallerKind.Stateful)]
-    public unsafe ref struct ManagedToNative
+    [CustomTypeMarshaller(hasState: true)]
+    public unsafe ref struct ManagedToUnmanaged
     {
         public void FromManaged(TManaged managed) => throw null; // Optional caller allocation, Span<T>
         public ref byte GetPinnableReference() => throw null; // Optional, allowed on all "stateful" shapes
-        public TNative ToNative() => throw null;
-        public void Free() => throw null; // Should not throw exceptions.
+        public TUnmanaged ToUnmanaged() => throw null;
+        public void Dispose() => throw null; // Should not throw exceptions. Is pattern-matched on a ref struct. See https://sourceroslyn.io/#Microsoft.CodeAnalysis.CSharp/Binder/Binder_Statements.cs,fe4277a539498184 for Roslyn rules we will try to match.
     }
 
-    [CustomTypeMarshaller(typeof(TManaged), CustomTypeMarshallerKind.Stateful)]
+    [CustomTypeMarshaller(hasState: true)]
     public unsafe ref struct Bidirectional
     {
         public void FromManaged(TManaged managed) => throw null; // Optional caller allocation, Span<T>
-        public ref byte GetPinnableReference() => throw null; // Optional, allowed on all "stateful" shapes
-        public TNative ToNative() => throw null; // Should not throw exceptions.
-        public void FromNative(TNative native) => throw null; // Should not throw exceptions.
+        public ref byte GetPinnableReference() => throw null; // Optional, allowed on all "stateful" shapes. See https://sourceroslyn.io/#Microsoft.CodeAnalysis.CSharp/Binder/Binder_Statements.cs,9e4a165c20c84c57 for Roslyn rules we will try to match (excluding extension methods as that's too hard to look up).
+        public TUnmanaged ToUnmanaged() => throw null; // Should not throw exceptions.
+        public void FromUnmanaged(TUnmanaged native) => throw null; // Should not throw exceptions.
         public TManaged ToManaged() => throw null;
-        public void Free() => throw null; // Should not throw exceptions.
+        public void Dispose() => throw null; // Should not throw exceptions.
     }
 
-    [CustomTypeMarshaller(typeof(TManaged), CustomTypeMarshallerKind.Stateful)]
-    public unsafe ref struct NativeToManaged
+    [CustomTypeMarshaller(hasState: true)]
+    public unsafe struct UnmanagedToManaged : IDisposable // IDisposable interface is required on the type to recognize the Dispose method. Following C#'s lead here and matching semantics of using statements.
     {
-        public void FromNative(TNative native) => throw null;
+        public void FromUnmanaged(TUnmanaged native) => throw null;
         public TManaged ToManaged() => throw null; // Should not throw exceptions.
-        public void Free() => throw null; // Should not throw exceptions.
+        public void Dispose() => throw null; // Should not throw exceptions.
     }
 
-    [CustomTypeMarshaller(typeof(TManaged), CustomTypeMarshallerKind.Stateless)] // Currently only support stateless. May support stateful in the future
+    [CustomTypeMarshaller(hasState: false)] // Currently only support stateless. May support stateful in the future
     public static class Element
     {
-        // Defined by public interface IMarshaller<TManaged, TNative> where TNative : unmanaged
-        public static TNative ConvertToNative(TManaged managed) => throw null;
-        public static TManaged ConvertToManaged(TNative native) => throw null;
-        public static void FreeNative(TNative native) => throw null; // Should not throw exceptions.
+        // Defined by public interface IMarshaller<TManaged, TUnmanaged> where TUnmanaged : unmanaged
+        public static TUnmanaged ConvertToUnmanaged(TManaged managed) => throw null;
+        public static TManaged ConvertToManaged(TUnmanaged native) => throw null;
+        public static void Dispose(TUnmanaged native) => throw null; // Should not throw exceptions.
     }
 }
 
-[ManagedToUnmanagedMarshallers(
-    typeof(ArrayMarshaller<>.In),
-    typeof(ArrayMarshaller<>),
-    typeof(ArrayMarshaller<>.Out))]
-[UnmanagedToManagedMarshallers(typeof(ArrayMarshaller<>), typeof(ArrayMarshaller<>), typeof(ArrayMarshaller<>))]
-[ElementMarshaller(typeof(ArrayMarshaller<>))]
-[CustomTypeMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder[]), CustomTypeMarshallerKind.StatelessLinearCollection, bufferSize: 0x200, UnmanagedResources = true)]
-public unsafe static class ArrayMarshaller<T> // Must be static class
+[ManagedToUnmanagedMarshallers(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder[]),
+    typeof(ArrayMarshaller<,>.In),
+    typeof(ArrayMarshaller<,>),
+    typeof(ArrayMarshaller<,>.Out))]
+[UnmanagedToManagedMarshallers(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder[]), typeof(ArrayMarshaller<>), typeof(ArrayMarshaller<>), typeof(ArrayMarshaller<>))]
+[ElementMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder[]), typeof(ArrayMarshaller<>))]
+[CustomTypeMarshaller(hasState: false, bufferSize: 0x200)]
+public unsafe static class ArrayMarshaller<T, [ElementUnmanagedType] TUnmanagedElement> // Must be static class
+    where TUnmanagedElement : unmanaged
 {
-    // Defined by public interface IMarshaller<TManaged, TNative> where TNative : unmanaged
-    public static byte* ConvertToNative<TNativeElement>(T[]? managed)
-        where TNativeElement : unmanaged
+    // Defined by public interface IMarshaller<TManaged, TUnmanaged> where TUnmanaged : unmanaged
+    public static byte* AllocateContainerForUnmanagedElements(T[]? managed, out int numElements)
     {
         if (managed is null)
         {
+            numElements = 0;
             return null;
         }
-        return (byte*)Marshal.AllocCoTaskMem(checked(sizeof(TNativeElement) * managed.Length));
+        numElements = managed.Length;
+        return (byte*)Marshal.AllocCoTaskMem(checked(sizeof(TUnmanagedElement) * numElements));
     }
 
     public static ReadOnlySpan<T> GetManagedValuesSource(T[] managed) => managed;
 
     public static Span<T> GetManagedValuesDestination(T[] managed) => managed;
 
-    public static int GetNumElements(T[] managed) => managed?.Length ?? 0;
+    public static Span<TUnmanagedElement> GetUnmanagedValuesDestination(byte* nativeValue, int numElements)
+        => new Span<TUnmanagedElement>(nativeValue, numElements);
 
-    public static Span<TNativeElement> GetNativeValuesDestination<TNativeElement>(byte* nativeValue, int numElements)
-        where TNativeElement : unmanaged => new Span<TNativeElement>(nativeValue, numElements);
+    public static ReadOnlySpan<TUnmanagedElement> GetUnmanagedValuesSource(byte* nativeValue, int numElements)
+        => new Span<TUnmanagedElement>(nativeValue, numElements);
 
-    public static ReadOnlySpan<TNativeElement> GetNativeValuesSource<TNativeElement>(byte* nativeValue, int numElements)
-        where TNativeElement : unmanaged => new Span<TNativeElement>(nativeValue, numElements);
+    public static T[] AllocateContainerForManagedElements(int length) => new T[length];
+    public static void Dispose(byte* native) => Marshal.FreeCoTaskMem((IntPtr)native); // We'll pattern match this Dispose method as well since we're already pattern-matching the Dispose method on the ref struct.
 
-    public static T[] CreateManagedForNumElements(int length) => new T[length];
-    public static void FreeNative(byte* native) => Marshal.FreeCoTaskMem((IntPtr)native);
-
-    // TODO: do we want to specify direction on CustomTypeMarshallerAttribute still?
-    // It would simplify the analyzer as we'd know exactly which members to check for without having to look at
-    // the "entry point" type.
-    [CustomTypeMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder[]), CustomTypeMarshallerKind.StatefulLinearCollection, bufferSize: 0x200, UnmanagedResources = true)]
+    [CustomTypeMarshaller(hasState: true, bufferSize: 20)] // As our buffer is typed to our native element type, we limit the buffer size based on number of elements, not number of bytes.
     public unsafe ref struct In
     {
         private T[]? _managedArray;
         private IntPtr _allocatedMemory;
-        private Span<byte> _span;
+        private Span<TUnmanagedElement> _span;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ArrayMarshaller{T}"/>.
         /// </summary>
         /// <param name="array">Array to be marshalled.</param>
         /// <param name="buffer">Buffer that may be used for marshalling.</param>
-        /// <param name="sizeOfNativeElement">Size of the native element in bytes.</param>
+        /// <param name="sizeOfUnmanagedElement">Size of the native element in bytes.</param>
         /// <remarks>
         /// The <paramref name="buffer"/> must not be movable - that is, it should not be
         /// on the managed heap or it should be pinned.
         /// <seealso cref="CustomTypeMarshallerFeatures.CallerAllocatedBuffer"/>
         /// </remarks>
-        public void FromManaged<TNativeElement>(T[]? array, Span<byte> buffer)
-            where TNativeElement : unmanaged
+        public void FromManaged(T[]? array, Span<TUnmanagedElement> buffer)
         {
             _allocatedMemory = default;
             if (array is null)
@@ -179,7 +188,7 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
             _managedArray = array;
 
             // Always allocate at least one byte when the array is zero-length.
-            int bufferSize = checked(array.Length * sizeof(TNativeElement));
+            int bufferSize = checked(array.Length * sizeof(TUnmanagedElement));
             int spaceToAllocate = Math.Max(bufferSize, 1);
             if (spaceToAllocate <= buffer.Length)
             {
@@ -188,7 +197,7 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
             else
             {
                 _allocatedMemory = Marshal.AllocCoTaskMem(spaceToAllocate);
-                _span = new Span<byte>((void*)_allocatedMemory, spaceToAllocate);
+                _span = new Span<TUnmanagedElement>((void*)_allocatedMemory, spaceToAllocate);
             }
         }
 
@@ -205,33 +214,23 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
         /// Returns a span that points to the memory where the native values of the array should be stored.
         /// </summary>
         /// <returns>Span where native values of the array should be stored.</returns>
-        /// <remarks>
-        /// <seealso cref="CustomTypeMarshallerDirection.In"/>
-        /// </remarks>
-        public Span<TNativeElement> GetNativeValuesDestination<TNativeElement>()
-            where TNativeElement : unmanaged => MemoryMarshal.Cast<byte, TNativeElement>(_span);
+        public Span<TUnmanagedElement> GetUnmanagedValuesDestination() => _span;
 
         /// <summary>
         /// Returns a reference to the marshalled array.
         /// </summary>
-        public ref byte GetPinnableReference() => ref MemoryMarshal.GetReference(_span);
+        public ref TUnmanagedElement GetPinnableReference() => ref MemoryMarshal.GetReference(_span);
 
         /// <summary>
         /// Returns the native value representing the array.
         /// </summary>
-        /// <remarks>
-        /// <seealso cref="CustomTypeMarshallerFeatures.TwoStageMarshalling"/>
-        /// </remarks>
-        public byte* ToNative() => (byte*)Unsafe.AsPointer(ref GetPinnableReference());
+        public byte* ToUnmanaged() => (byte*)Unsafe.AsPointer(ref GetPinnableReference());
 
         /// <summary>
         /// Sets the native value representing the array.
         /// </summary>
         /// <param name="value">The native value.</param>
-        /// <remarks>
-        /// <seealso cref="CustomTypeMarshallerFeatures.TwoStageMarshalling"/>
-        /// </remarks>
-        public void FromNative(byte* value)
+        public void FromUnmanaged(byte* value)
         {
             _allocatedMemory = (IntPtr)value;
         }
@@ -239,18 +238,12 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
         /// <summary>
         /// Returns the managed array.
         /// </summary>
-        /// <remarks>
-        /// <seealso cref="CustomTypeMarshallerDirection.Out"/>
-        /// </remarks>
         public T[]? ToManaged() => _managedArray;
 
         /// <summary>
         /// Frees native resources.
         /// </summary>
-        /// <remarks>
-        /// <seealso cref="CustomTypeMarshallerFeatures.UnmanagedResources"/>
-        /// </remarks>
-        public void Free()
+        public void Dispose()
         {
             Marshal.FreeCoTaskMem(_allocatedMemory);
         }
@@ -265,12 +258,12 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
         }
     }
 
-    [CustomTypeMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder[]), CustomTypeMarshallerKind.StatefulLinearCollection, UnmanagedResources = true)]
+    [CustomTypeMarshaller(hasState: true)]
     public unsafe ref struct Out
     {
         private T[]? _managedArray;
         private IntPtr _allocatedMemory;
-        private Span<byte> _span;
+        private Span<TUnmanagedElement> _span;
 
         /// <summary>
         /// Gets a span that points to the memory where the unmarshalled managed values of the array should be stored.
@@ -284,27 +277,24 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
         /// </summary>
         /// <param name="length">Length of the array.</param>
         /// <returns>Span over the native values of the array.</returns>
-        public ReadOnlySpan<TNativeElement> GetNativeValuesSource<TNativeElement>(int length)
-            where TNativeElement : unmanaged
+        public ReadOnlySpan<TUnmanagedElement> GetUnmanagedValuesSource(int length)
         {
             if (_allocatedMemory == IntPtr.Zero)
                 return default;
 
-            Span<TNativeElement> spanOverNativeValues = new Span<TNativeElement>((void*)_allocatedMemory, length);
-            _span = MemoryMarshal.AsBytes(spanOverNativeValues);
-            return spanOverNativeValues;
+            return _span = new Span<TUnmanagedElement>((void*)_allocatedMemory, length);
         }
 
         /// <summary>
         /// Returns a reference to the marshalled array.
         /// </summary>
-        public ref byte GetPinnableReference() => ref MemoryMarshal.GetReference(_span);
+        public ref TUnmanagedElement GetPinnableReference() => ref MemoryMarshal.GetReference(_span);
 
         /// <summary>
         /// Sets the native value representing the array.
         /// </summary>
         /// <param name="value">The native value.</param>
-        public void FromNative(byte* value)
+        public void FromUnmanaged(byte* value)
         {
             _allocatedMemory = (IntPtr)value;
         }
@@ -317,17 +307,14 @@ public unsafe static class ArrayMarshaller<T> // Must be static class
         /// <summary>
         /// Frees native resources.
         /// </summary>
-        /// <remarks>
-        /// <seealso cref="CustomTypeMarshallerFeatures.UnmanagedResources"/>
-        /// </remarks>
-        public void Free()
+        public void Dispose()
         {
             Marshal.FreeCoTaskMem(_allocatedMemory);
         }
     }
 }
 
-public static unsafe partial class NativeImport
+public static unsafe partial class UnmanagedImport
 {
     public static partial TManaged CallFunc(
         TManaged value,
@@ -349,7 +336,7 @@ public static unsafe partial class NativeImport
 
 #nullable disable
 
-public static unsafe partial class NativeImport
+public static unsafe partial class UnmanagedImport
 {
     public static partial TManaged CallFunc(
         TManaged value,
@@ -359,20 +346,20 @@ public static unsafe partial class NativeImport
     {
         Unsafe.SkipInit(out out_value);
 
-        Marshaller.ManagedToNative _byval_m_ = default;
-        TNative _byval_ = default;
+        Marshaller.ManagedToUnmanaged _byval_m_ = default;
+        TUnmanaged _byval_ = default;
 
-        Marshaller.ManagedToNative _in_m_ = default;
-        TNative _in_ = default;
+        Marshaller.ManagedToUnmanaged _in_m_ = default;
+        TUnmanaged _in_ = default;
 
         Marshaller.Bidirectional _ref_m_ = default;
-        TNative _ref_ = default;
+        TUnmanaged _ref_ = default;
 
-        Marshaller.NativeToManaged _out_m_ = default;
-        TNative _out_ = default;
+        Marshaller.UnmanagedToManaged _out_m_ = default;
+        TUnmanaged _out_ = default;
 
-        Marshaller.NativeToManaged _ret_m_ = default;
-        TNative _ret_ = default;
+        Marshaller.UnmanagedToManaged _ret_m_ = default;
+        TUnmanaged _ret_ = default;
 
         TManaged _ret_value_ = default;
 
@@ -382,17 +369,17 @@ public static unsafe partial class NativeImport
             _byval_m_.FromManaged(value);
             fixed (void* _byval_dummy_ = &_byval_m_.GetPinnableReference())
             {
-                _byval_ = _byval_m_.ToNative();
+                _byval_ = _byval_m_.ToUnmanaged();
 
                 _in_m_.FromManaged(in_value);
                 fixed (void* _in_dummy_ = &_in_m_.GetPinnableReference())
                 {
-                    _in_ = _in_m_.ToNative();
+                    _in_ = _in_m_.ToUnmanaged();
 
                     _ref_m_.FromManaged(ref_value);
                     fixed (void* _ref_dummy_ = &_ref_m_.GetPinnableReference())
                     {
-                        _ref_ = _ref_m_.ToNative();
+                        _ref_ = _ref_m_.ToUnmanaged();
 
                         // Invoke
                         _ret_ = __PInvoke(_byval_, &_in_, &_ref_, &_out_);
@@ -401,10 +388,10 @@ public static unsafe partial class NativeImport
             }
 
             // Unmarshal setup
-            // We do FromNative here to capture the native values so we do not leak if later unmarshalling throws.
-            _ref_m_.FromNative(_ref_);
-            _out_m_.FromNative(_out_);
-            _ret_m_.FromNative(_ret_);
+            // We do FromUnmanaged here to capture the native values so we do not leak if later unmarshalling throws.
+            _ref_m_.FromUnmanaged(_ref_);
+            _out_m_.FromUnmanaged(_out_);
+            _ret_m_.FromUnmanaged(_ret_);
 
             // Unmarshal
             ref_value = _ref_m_.ToManaged();
@@ -414,17 +401,17 @@ public static unsafe partial class NativeImport
         finally
         {
             // Clean-up
-            _byval_m_.Free();
-            _in_m_.Free();
-            _ref_m_.Free();
-            _out_m_.Free();
-            _ret_m_.Free();
+            _byval_m_.Dispose();
+            _in_m_.Dispose();
+            _ref_m_.Dispose();
+            _out_m_.Dispose();
+            _ret_m_.Dispose();
         }
 
         return _ret_value_;
 
         // P/Invoke declaration
-        static TNative __PInvoke(TNative v, TNative* in_v, TNative* r_v, TNative* o_v) => throw null;
+        static TUnmanaged __PInvoke(TUnmanaged v, TUnmanaged* in_v, TUnmanaged* r_v, TUnmanaged* o_v) => throw null;
     }
 
     public static unsafe partial TManaged[] CallFunc(
@@ -437,21 +424,21 @@ public static unsafe partial class NativeImport
     {
         Unsafe.SkipInit(out out_value);
 
-        ArrayMarshaller<TManaged>.In _byval_m_ = new();
+        ArrayMarshaller<TManaged, TUnmanaged>.In _byval_m_ = new();
         byte* _byval_ = default;
 
-        ArrayMarshaller<TManaged>.In _out_byval_m_ = new();
+        ArrayMarshaller<TManaged, TUnmanaged>.In _out_byval_m_ = new();
         byte* _out_byval_ = default;
 
-        ArrayMarshaller<TManaged>.In _in_m_ = new();
+        ArrayMarshaller<TManaged, TUnmanaged>.In _in_m_ = new();
         byte* _in_ = default;
 
         byte* _ref_ = default;
 
-        ArrayMarshaller<TManaged>.Out _out_m_ = new();
+        ArrayMarshaller<TManaged, TUnmanaged>.Out _out_m_ = new();
         byte* _out_ = default;
 
-        ArrayMarshaller<TManaged>.Out _ret_m_ = new();
+        ArrayMarshaller<TManaged, TUnmanaged>.Out _ret_m_ = new();
         byte* _ret_ = default;
 
         TManaged[] _ret_value_ = default;
@@ -460,56 +447,56 @@ public static unsafe partial class NativeImport
         {
             // Marshal
             byte* byval_m_ptr = stackalloc byte[0x200];
-            _byval_m_.FromManaged<TNative>(value, new Span<byte>(byval_m_ptr, 0x200));
+            _byval_m_.FromManaged(value, new Span<TUnmanaged>(byval_m_ptr, 20));
 
             {
                 ReadOnlySpan<TManaged> _byval_m_managed_source = _byval_m_.GetManagedValuesSource();
-                Span<TNative> _byval_m_native_source = _byval_m_.GetNativeValuesDestination<TNative>();
+                Span<TUnmanaged> _byval_m_native_source = _byval_m_.GetUnmanagedValuesDestination();
 
                 for (int i = 0; i < _byval_m_managed_source.Length; i++)
                 {
-                    _byval_m_native_source[i] = Marshaller.Element.ConvertToNative(_byval_m_managed_source[i]);
+                    _byval_m_native_source[i] = Marshaller.Element.ConvertToUnmanaged(_byval_m_managed_source[i]);
                 }
             }
 
-            byte* out_byval_m_ptr = stackalloc byte[0x200];
-            _out_byval_m_.FromManaged<TNative>(value, new Span<byte>(out_byval_m_ptr, 0x200));
+            TUnmanaged* out_byval_m_ptr = stackalloc TUnmanaged[20];
+            _out_byval_m_.FromManaged(value, new Span<TUnmanaged>(out_byval_m_ptr, 20));
 
-            byte* in_m_ptr = stackalloc byte[0x200];
-            _in_m_.FromManaged<TNative>(value, new Span<byte>(in_m_ptr, 0x200));
+            TUnmanaged* in_m_ptr = stackalloc TUnmanaged[20];
+            _in_m_.FromManaged(value, new Span<TUnmanaged>(in_m_ptr, 20));
 
             {
                 ReadOnlySpan<TManaged> _in_m_managed_source = _byval_m_.GetManagedValuesSource();
-                Span<TNative> _in_m_native_source = _in_m_.GetNativeValuesDestination<TNative>();
+                Span<TUnmanaged> _in_m_native_source = _in_m_.GetUnmanagedValuesDestination();
 
                 for (int i = 0; i < _in_m_managed_source.Length; i++)
                 {
-                    _in_m_native_source[i] = Marshaller.Element.ConvertToNative(_in_m_managed_source[i]);
+                    _in_m_native_source[i] = Marshaller.Element.ConvertToUnmanaged(_in_m_managed_source[i]);
                 }
             }
 
-            _ref_ = ArrayMarshaller<TManaged>.ConvertToNative<IntPtr>(ref_value);
+            _ref_ = ArrayMarshaller<TManaged, TUnmanaged>.AllocateContainerForUnmanagedElements(ref_value, out int _ref_num_elements);
             {
                 ReadOnlySpan<TManaged> _ref_m_managed_source = _byval_m_.GetManagedValuesSource();
-                Span<TNative> _ref_m_native_source = ArrayMarshaller<TManaged>.GetNativeValuesDestination<TNative>(_ref_, ArrayMarshaller<TManaged>.GetNumElements(ref_value));
+                Span<TUnmanaged> _ref_m_native_source = ArrayMarshaller<TManaged, TUnmanaged>.GetUnmanagedValuesDestination(_ref_, _ref_num_elements);
 
                 for (int i = 0; i < _ref_m_managed_source.Length; i++)
                 {
-                    _ref_m_native_source[i] = Marshaller.Element.ConvertToNative(_ref_m_managed_source[i]);
+                    _ref_m_native_source[i] = Marshaller.Element.ConvertToUnmanaged(_ref_m_managed_source[i]);
                 }
             }
 
             // Pin
-            fixed (void* _byval_blittable_ = &ArrayMarshaller<int>.In.GetPinnableReference(value_blittable))
+            fixed (void* _byval_blittable_ = &ArrayMarshaller<int, int>.In.GetPinnableReference(value_blittable))
             fixed (void* _byval_dummy_ = _byval_m_)
             {
-                _byval_ = _byval_m_.ToNative();
+                _byval_ = _byval_m_.ToUnmanaged();
                 fixed (void* _out_byval_dummy_ = _out_byval_m_)
                 {
-                    _out_byval_ = _out_byval_m_.ToNative();
+                    _out_byval_ = _out_byval_m_.ToUnmanaged();
                     fixed (void* _in_dummy_ = _in_m_)
                     {
-                        _in_ = _in_m_.ToNative();
+                        _in_ = _in_m_.ToUnmanaged();
 
                         // Invoke
                         _ret_ = __PInvoke(_byval_blittable_, _byval_, _out_byval_, _in_, _ref_, &_out_);
@@ -518,14 +505,14 @@ public static unsafe partial class NativeImport
             }
 
             // Unmarshal setup
-            // We do FromNative here to capture the native values so we do not leak if later unmarshalling throws.
-            _out_m_.FromNative(_out_);
-            _ret_m_.FromNative(_ret_);
+            // We do FromUnmanaged here to capture the native values so we do not leak if later unmarshalling throws.
+            _out_m_.FromUnmanaged(_out_);
+            _ret_m_.FromUnmanaged(_ret_);
 
             // Unmarshal
             {
                 Span<TManaged> _out_byval_managed_destination = MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in MemoryMarshal.GetReference(_out_byval_m_.GetManagedValuesSource())), _out_byval_m_.GetManagedValuesSource().Length);
-                ReadOnlySpan<TNative> _out_byval_native_source = _out_byval_m_.GetNativeValuesDestination<TNative>();
+                ReadOnlySpan<TUnmanaged> _out_byval_native_source = _out_byval_m_.GetUnmanagedValuesDestination();
 
                 for (int i = 0; i < _out_byval_managed_destination.Length; i++)
                 {
@@ -534,9 +521,9 @@ public static unsafe partial class NativeImport
             }
 
             {
-                TManaged[] ref_local = ArrayMarshaller<TManaged>.CreateManagedForNumElements(10);
-                Span<TManaged> ref_managed_values_destination = ArrayMarshaller<TManaged>.GetManagedValuesDestination(ref_local);
-                ReadOnlySpan<TNative> ref_native_values_source = ArrayMarshaller<TManaged>.GetNativeValuesSource<TNative>(_ref_, 10);
+                TManaged[] ref_local = ArrayMarshaller<TManaged, TUnmanaged>.AllocateContainerForManagedElements(10);
+                Span<TManaged> ref_managed_values_destination = ArrayMarshaller<TManaged, TUnmanaged>.GetManagedValuesDestination(ref_local);
+                ReadOnlySpan<TUnmanaged> ref_native_values_source = ArrayMarshaller<TManaged, TUnmanaged>.GetUnmanagedValuesSource(_ref_, 10);
 
                 for (int i = 0; i < ref_managed_values_destination.Length; i++)
                 {
@@ -547,7 +534,7 @@ public static unsafe partial class NativeImport
 
             {
                 Span<TManaged> out_managed_values_destination = _out_m_.GetManagedValuesDestination(20);
-                ReadOnlySpan<TNative> ref_native_values_source = _out_m_.GetNativeValuesSource<TNative>(20);
+                ReadOnlySpan<TUnmanaged> ref_native_values_source = _out_m_.GetUnmanagedValuesSource(20);
 
                 for (int i = 0; i < out_managed_values_destination.Length; i++)
                 {
@@ -558,7 +545,7 @@ public static unsafe partial class NativeImport
 
             {
                 Span<TManaged> ret_managed_values_destination = _ret_m_.GetManagedValuesDestination(20);
-                ReadOnlySpan<TNative> ref_native_values_source = _ret_m_.GetNativeValuesSource<TNative>(20);
+                ReadOnlySpan<TUnmanaged> ref_native_values_source = _ret_m_.GetUnmanagedValuesSource(20);
 
                 for (int i = 0; i < ret_managed_values_destination.Length; i++)
                 {
@@ -570,11 +557,11 @@ public static unsafe partial class NativeImport
         finally
         {
             // Clean-up
-            _byval_m_.Free();
-            _in_m_.Free();
-            ArrayMarshaller<TManaged>.FreeNative(_ref_);
-            _out_m_.Free();
-            _ret_m_.Free();
+            _byval_m_.Dispose();
+            _in_m_.Dispose();
+            ArrayMarshaller<TManaged, TUnmanaged>.Dispose(_ref_);
+            _out_m_.Dispose();
+            _ret_m_.Dispose();
         }
 
         return _ret_value_;
