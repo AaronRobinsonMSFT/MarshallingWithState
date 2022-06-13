@@ -14,43 +14,53 @@ namespace ShapeIdeasReversePInvoke;
 public struct TManaged { }
 public struct TUnmanaged { }
 
-public sealed class CustomTypeMarshallerAttribute : Attribute
+public sealed class CustomTypeMarshallerFeaturesAttribute : Attribute
 {
-    // We use a bool parameter here instead of an enum since we are going to move to interfaces in C# v.Next
-    // to define our shapes as ref-struct generic parameters and ref-structs implementing interfaces are
-    // planned for C# v.Next as one of the large features.
-    // This way, we can [Obsolete] these constructors, introduce new ones that don't take the bool,
-    // and push people to use the interfaces without having to obsolete a new type (ie. a CustomTypeMarshallerKind enum).
-    public CustomTypeMarshallerAttribute(bool hasState) { }
-    public CustomTypeMarshallerAttribute(bool hasState, int bufferSize) { }
-    // The marshaller must implement a `void NotifyInvokeSucceeded()` method.
-    // This method will be called by any source-generated marshaller after the "target invocation" has successfully completed.
-    public bool NotifyForSuccessfulInvoke { get; set; }
-    public bool GuaranteedUnmarshal { get; set; }
+    public int BufferSize { get; set; }
+}
 
+// Use a base class here to allow doing ManagedToUnmanagedMarshallersAttribute.GenericPlaceholder, etc. without having 3 separate placeholder types.
+// For the following attribute types, any marshaller types that are provided will be validated by an analyzer to have the correct members to prevent
+// developers from accidentally typoing a member like Free() and causing memory leaks.
+public abstract class CustomUnmanagedTypeMarshallersAttributeBase : Attribute
+{
     public sealed class GenericPlaceholder { }
 }
 
 // Specify marshallers for P/Invoke scenarios
-public sealed class ManagedToUnmanagedMarshallersAttribute : Attribute
+public sealed class ManagedToUnmanagedMarshallersAttribute : CustomUnmanagedTypeMarshallersAttributeBase
 {
-    public ManagedToUnmanagedMarshallersAttribute(Type managedType, Type? inMarshaller, Type? refMarshaller, Type? outMarshaller)
+    public ManagedToUnmanagedMarshallersAttribute(Type managedType)
     {
 
     }
+
+    // The marshaller to use when a parameter of the managed type is passed by-value or with the `in` keyword.
+    public Type? InMarshaller { get; set; }
+    // The marshaller to use when a parameter of the managed type is passed with the `ref` keyword.
+    public Type? RefMarshaller { get; set; }
+    // The marshaller to use when a parameter of the managed type is passed with the `out` keyword.
+    public Type? OutMarshaller { get; set; }
 }
 
 // Specify marshallers for Reverse P/Invoke scenarios
-public sealed class UnmanagedToManagedMarshallersAttribute : Attribute
+public sealed class UnmanagedToManagedMarshallersAttribute : CustomUnmanagedTypeMarshallersAttributeBase
 {
-    public UnmanagedToManagedMarshallersAttribute(Type managedType, Type? inMarshaller, Type? refMarshaller, Type? outMarshaller)
+    public UnmanagedToManagedMarshallersAttribute(Type managedType)
     {
 
     }
+
+    // The marshaller to use when a parameter of the managed type is passed by-value or with the `in` keyword.
+    public Type? InMarshaller { get; set; }
+    // The marshaller to use when a parameter of the managed type is passed with the `ref` keyword.
+    public Type? RefMarshaller { get; set; }
+    // The marshaller to use when a parameter of the managed type is passed with the `out` keyword.
+    public Type? OutMarshaller { get; set; }
 }
 
 // Specify marshaller for array-element marshalling and default struct field marshalling
-public sealed class ElementMarshallerAttribute : Attribute
+public sealed class ElementMarshallerAttribute : CustomUnmanagedTypeMarshallersAttributeBase
 {
     public ElementMarshallerAttribute(Type managedType, Type elementMarshaller)
     {
@@ -61,9 +71,6 @@ public sealed class ElementMarshallerAttribute : Attribute
 // Specifies that a particular generic parameter is the collection element's unmanaged type.
 // If this attribute is provided on a generic parameter of a marshaller, then the generator will assume that it is a linear collection
 // marshaller.
-// TODO: This only works if we plan to move towards interfaces in the future. Otherwise if we ever introduce another collection shape, we'll
-// have to disambiguate somehow.
-// See the comment in CustomTypeMarshallerAttribute about the bool parameters in the constructors.
 [AttributeUsage(AttributeTargets.GenericParameter)]
 public sealed class ElementUnmanagedTypeAttribute : Attribute
 {
@@ -71,64 +78,64 @@ public sealed class ElementUnmanagedTypeAttribute : Attribute
 
 [ManagedToUnmanagedMarshallers(
     typeof(TManaged),
-    typeof(ManagedToUnmanaged),
-    typeof(Bidirectional),
-    typeof(UnmanagedToManaged))]
+    InMarshaller = typeof(ManagedToUnmanaged),
+    RefMarshaller = typeof(Bidirectional),
+    OutMarshaller = typeof(UnmanagedToManaged))]
 [UnmanagedToManagedMarshallers(
     typeof(TManaged),
-    typeof(UnmanagedToManaged),
-    typeof(Bidirectional),
-    typeof(ManagedToUnmanaged))]
+    InMarshaller = typeof(UnmanagedToManaged),
+    RefMarshaller = typeof(Bidirectional),
+    OutMarshaller = typeof(ManagedToUnmanaged))]
 [ElementMarshaller(
     typeof(TManaged),
     typeof(Element))]
 public unsafe static class Marshaller // Must be static class
 {
-    [CustomTypeMarshaller(hasState: true)]
     public unsafe ref struct ManagedToUnmanaged
     {
         public void FromManaged(TManaged managed) => throw null; // Optional caller allocation, Span<T>
         public ref byte GetPinnableReference() => throw null; // Optional, allowed on all "stateful" shapes
         public TUnmanaged ToUnmanaged() => throw null;
-        public void Dispose() => throw null; // Should not throw exceptions. Is pattern-matched on a ref struct. See https://sourceroslyn.io/#Microsoft.CodeAnalysis.CSharp/Binder/Binder_Statements.cs,fe4277a539498184 for Roslyn rules we will try to match.
+        public void Free() => throw null; // Should not throw exceptions. Use Free instead of Dispose to avoid issues with marshallers needing to follow the Dispose pattern guidance.
     }
 
-    [CustomTypeMarshaller(hasState: true)]
     public unsafe ref struct Bidirectional
     {
         public void FromManaged(TManaged managed) => throw null; // Optional caller allocation, Span<T>
-        public ref byte GetPinnableReference() => throw null; // Optional, allowed on all "stateful" shapes. See https://sourceroslyn.io/#Microsoft.CodeAnalysis.CSharp/Binder/Binder_Statements.cs,9e4a165c20c84c57 for Roslyn rules we will try to match (excluding extension methods as that's too hard to look up).
+        public ref byte GetPinnableReference() => throw null; // Optional, allowed on all "stateful" shapes.
         public TUnmanaged ToUnmanaged() => throw null; // Should not throw exceptions.
         public void FromUnmanaged(TUnmanaged native) => throw null; // Should not throw exceptions.
         public TManaged ToManaged() => throw null;
-        public void Dispose() => throw null; // Should not throw exceptions.
+        public void Free() => throw null; // Should not throw exceptions.
     }
 
-    [CustomTypeMarshaller(hasState: true)]
-    public unsafe struct UnmanagedToManaged : IDisposable // IDisposable interface is required on the type to recognize the Dispose method. Following C#'s lead here and matching semantics of using statements.
+    public unsafe struct UnmanagedToManaged
     {
         public void FromUnmanaged(TUnmanaged native) => throw null;
         public TManaged ToManaged() => throw null; // Should not throw exceptions.
-        public void Dispose() => throw null; // Should not throw exceptions.
+        public void Free() => throw null; // Should not throw exceptions.
     }
 
-    [CustomTypeMarshaller(hasState: false)] // Currently only support stateless. May support stateful in the future
+    // Currently only support stateless. May support stateful in the future
     public static class Element
     {
         // Defined by public interface IMarshaller<TManaged, TUnmanaged> where TUnmanaged : unmanaged
         public static TUnmanaged ConvertToUnmanaged(TManaged managed) => throw null;
         public static TManaged ConvertToManaged(TUnmanaged native) => throw null;
-        public static void Dispose(TUnmanaged native) => throw null; // Should not throw exceptions.
+        public static void Free(TUnmanaged native) => throw null; // Should not throw exceptions.
     }
 }
 
-[ManagedToUnmanagedMarshallers(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder[]),
-    typeof(ArrayMarshaller<,>.In),
-    typeof(ArrayMarshaller<,>),
-    typeof(ArrayMarshaller<,>.Out))]
-[UnmanagedToManagedMarshallers(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder[]), typeof(ArrayMarshaller<>), typeof(ArrayMarshaller<>), typeof(ArrayMarshaller<>))]
-[ElementMarshaller(typeof(CustomTypeMarshallerAttribute.GenericPlaceholder[]), typeof(ArrayMarshaller<>))]
-[CustomTypeMarshaller(hasState: false, bufferSize: 0x200)]
+[ManagedToUnmanagedMarshallers(typeof(ManagedToUnmanagedMarshallersAttribute.GenericPlaceholder[]),
+    InMarshaller = typeof(ArrayMarshaller<,>.In),
+    RefMarshaller = typeof(ArrayMarshaller<,>),
+    OutMarshaller = typeof(ArrayMarshaller<,>.Out))]
+[UnmanagedToManagedMarshallers(typeof(UnmanagedToManagedMarshallersAttribute.GenericPlaceholder[]),
+    InMarshaller = typeof(ArrayMarshaller<,>),
+    RefMarshaller = typeof(ArrayMarshaller<,>),
+    OutMarshaller = typeof(ArrayMarshaller<,>))]
+[ElementMarshaller(typeof(ElementMarshallerAttribute.GenericPlaceholder[]), typeof(ArrayMarshaller<,>))]
+[CustomTypeMarshallerFeatures(BufferSize = 20)]
 public unsafe static class ArrayMarshaller<T, [ElementUnmanagedType] TUnmanagedElement> // Must be static class
     where TUnmanagedElement : unmanaged
 {
@@ -155,9 +162,9 @@ public unsafe static class ArrayMarshaller<T, [ElementUnmanagedType] TUnmanagedE
         => new Span<TUnmanagedElement>(nativeValue, numElements);
 
     public static T[] AllocateContainerForManagedElements(int length) => new T[length];
-    public static void Dispose(byte* native) => Marshal.FreeCoTaskMem((IntPtr)native); // We'll pattern match this Dispose method as well since we're already pattern-matching the Dispose method on the ref struct.
+    public static void Free(byte* native) => Marshal.FreeCoTaskMem((IntPtr)native);
 
-    [CustomTypeMarshaller(hasState: true, bufferSize: 20)] // As our buffer is typed to our native element type, we limit the buffer size based on number of elements, not number of bytes.
+    [CustomTypeMarshallerFeatures(BufferSize = 20)] // As our buffer is typed to our native element type, we limit the buffer size based on number of elements, not number of bytes.
     public unsafe ref struct In
     {
         private T[]? _managedArray;
@@ -243,7 +250,7 @@ public unsafe static class ArrayMarshaller<T, [ElementUnmanagedType] TUnmanagedE
         /// <summary>
         /// Frees native resources.
         /// </summary>
-        public void Dispose()
+        public void Free()
         {
             Marshal.FreeCoTaskMem(_allocatedMemory);
         }
@@ -258,7 +265,6 @@ public unsafe static class ArrayMarshaller<T, [ElementUnmanagedType] TUnmanagedE
         }
     }
 
-    [CustomTypeMarshaller(hasState: true)]
     public unsafe ref struct Out
     {
         private T[]? _managedArray;
@@ -307,7 +313,7 @@ public unsafe static class ArrayMarshaller<T, [ElementUnmanagedType] TUnmanagedE
         /// <summary>
         /// Frees native resources.
         /// </summary>
-        public void Dispose()
+        public void Free()
         {
             Marshal.FreeCoTaskMem(_allocatedMemory);
         }
@@ -401,11 +407,11 @@ public static unsafe partial class UnmanagedImport
         finally
         {
             // Clean-up
-            _byval_m_.Dispose();
-            _in_m_.Dispose();
-            _ref_m_.Dispose();
-            _out_m_.Dispose();
-            _ret_m_.Dispose();
+            _byval_m_.Free();
+            _in_m_.Free();
+            _ref_m_.Free();
+            _out_m_.Free();
+            _ret_m_.Free();
         }
 
         return _ret_value_;
@@ -557,11 +563,11 @@ public static unsafe partial class UnmanagedImport
         finally
         {
             // Clean-up
-            _byval_m_.Dispose();
-            _in_m_.Dispose();
-            ArrayMarshaller<TManaged, TUnmanaged>.Dispose(_ref_);
-            _out_m_.Dispose();
-            _ret_m_.Dispose();
+            _byval_m_.Free();
+            _in_m_.Free();
+            ArrayMarshaller<TManaged, TUnmanaged>.Free(_ref_);
+            _out_m_.Free();
+            _ret_m_.Free();
         }
 
         return _ret_value_;
