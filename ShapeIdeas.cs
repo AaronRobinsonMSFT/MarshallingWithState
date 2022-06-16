@@ -5,6 +5,8 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
+namespace ShapeIdeas;
+
 public struct TManaged { }
 public struct TNative { }
 
