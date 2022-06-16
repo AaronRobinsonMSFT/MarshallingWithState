@@ -14,63 +14,109 @@ namespace ShapeIdeasReversePInvoke;
 public struct TManaged { }
 public struct TUnmanaged { }
 
+
+/// <summary>
+/// Define features for a custom type marshaller.
+/// </summary>
 public sealed class CustomTypeMarshallerFeaturesAttribute : Attribute
 {
+    /// <summary>
+    /// Desired caller buffer size for the marshaller.
+    /// </summary>
     public int BufferSize { get; set; }
 }
 
-// Use a base class here to allow doing ManagedToUnmanagedMarshallersAttribute.GenericPlaceholder, etc. without having 3 separate placeholder types.
-// For the following attribute types, any marshaller types that are provided will be validated by an analyzer to have the correct members to prevent
-// developers from accidentally typoing a member like Free() and causing memory leaks.
+
+/// <summary>
+/// Base class attribute for custom marshaller attributes.
+/// </summary>
+/// <remarks>
+/// Use a base class here to allow doing ManagedToUnmanagedMarshallersAttribute.GenericPlaceholder, etc. without having 3 separate placeholder types.
+/// For the following attribute types, any marshaller types that are provided will be validated by an analyzer to have the correct members to prevent
+/// developers from accidentally typoing a member like Free() and causing memory leaks.
+/// </remarks>
 public abstract class CustomUnmanagedTypeMarshallersAttributeBase : Attribute
 {
+    /// <summary>
+    /// Placeholder type for generic parameter
+    /// </summary>
     public sealed class GenericPlaceholder { }
 }
 
-// Specify marshallers for P/Invoke scenarios
+/// <summary>
+/// Specify marshallers used in the managed to unmanaged direction (that is, P/Invoke)
+/// </summary>
 public sealed class ManagedToUnmanagedMarshallersAttribute : CustomUnmanagedTypeMarshallersAttributeBase
 {
-    public ManagedToUnmanagedMarshallersAttribute(Type managedType)
-    {
+    /// <summary>
+    /// Create instance of <see cref="ManagedToUnmanagedMarshallersAttribute"/>.
+    /// </summary>
+    /// <param name="managedType">Managed type to marshal</param>
+    public ManagedToUnmanagedMarshallersAttribute(Type managedType) { }
 
-    }
-
-    // The marshaller to use when a parameter of the managed type is passed by-value or with the `in` keyword.
+    /// <summary>
+    /// Marshaller to use when a parameter of the managed type is passed by-value or with the <c>in</c> keyword.
+    /// </summary>
     public Type? InMarshaller { get; set; }
-    // The marshaller to use when a parameter of the managed type is passed with the `ref` keyword.
+
+    /// <summary>
+    /// Marshaller to use when a parameter of the managed type is passed by-value or with the <c>ref</c> keyword.
+    /// </summary>
     public Type? RefMarshaller { get; set; }
-    // The marshaller to use when a parameter of the managed type is passed with the `out` keyword.
+
+    /// <summary>
+    /// Marshaller to use when a parameter of the managed type is passed by-value or with the <c>out</c> keyword.
+    /// </summary>
     public Type? OutMarshaller { get; set; }
 }
 
-// Specify marshallers for Reverse P/Invoke scenarios
+/// <summary>
+/// Specify marshallers used in the unmanaged to managed direction (that is, Reverse P/Invoke)
+/// </summary>
 public sealed class UnmanagedToManagedMarshallersAttribute : CustomUnmanagedTypeMarshallersAttributeBase
 {
-    public UnmanagedToManagedMarshallersAttribute(Type managedType)
-    {
+    /// <summary>
+    /// Create instance of <see cref="UnmanagedToManagedMarshallersAttribute"/>.
+    /// </summary>
+    /// <param name="managedType">Managed type to marshal</param>
+    public UnmanagedToManagedMarshallersAttribute(Type managedType) { }
 
-    }
-
-    // The marshaller to use when a parameter of the managed type is passed by-value or with the `in` keyword.
+    /// <summary>
+    /// Marshaller to use when a parameter of the managed type is passed by-value or with the <c>in</c> keyword.
+    /// </summary>
     public Type? InMarshaller { get; set; }
-    // The marshaller to use when a parameter of the managed type is passed with the `ref` keyword.
+
+    /// <summary>
+    /// Marshaller to use when a parameter of the managed type is passed by-value or with the <c>ref</c> keyword.
+    /// </summary>
     public Type? RefMarshaller { get; set; }
-    // The marshaller to use when a parameter of the managed type is passed with the `out` keyword.
+
+    /// <summary>
+    /// Marshaller to use when a parameter of the managed type is passed by-value or with the <c>out</c> keyword.
+    /// </summary>
     public Type? OutMarshaller { get; set; }
 }
 
-// Specify marshaller for array-element marshalling and default struct field marshalling
+/// <summary>
+/// Specify marshaller for array-element marshalling and default struct field marshalling.
+/// </summary>
 public sealed class ElementMarshallerAttribute : CustomUnmanagedTypeMarshallersAttributeBase
 {
-    public ElementMarshallerAttribute(Type managedType, Type elementMarshaller)
-    {
-
-    }
+    /// <summary>
+    /// Create instance of <see cref="ElementMarshallerAttribute"/>.
+    /// </summary>
+    /// <param name="managedType">Managed type to marshal</param>
+    /// <param name="elementMarshaller">Marshaller type to use for marshalling <paramref name="managedType"/>.</param>
+    public ElementMarshallerAttribute(Type managedType, Type elementMarshaller) { }
 }
 
-// Specifies that a particular generic parameter is the collection element's unmanaged type.
-// If this attribute is provided on a generic parameter of a marshaller, then the generator will assume that it is a linear collection
-// marshaller.
+/// <summary>
+/// Specifies that a particular generic parameter is the collection element's unmanaged type.
+/// </summary>
+/// <remarks>
+/// If this attribute is provided on a generic parameter of a marshaller, then the generator will assume
+/// that it is a linear collection marshaller.
+/// </remarks>
 [AttributeUsage(AttributeTargets.GenericParameter)]
 public sealed class ElementUnmanagedTypeAttribute : Attribute
 {
